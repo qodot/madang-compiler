@@ -1,9 +1,13 @@
 //! List Item 파서 (CommonMark 5.2 List Items)
 //!
-//! Bullet 마커 (-*+)와 Ordered 마커 (1. 1))를 감지합니다.
+//! https://spec.commonmark.org/0.31.2/#list-items
+//!
 //! - 마커 인식 규칙 (Example 261, 265-269)
-//! - 들여쓰기 규칙
-//! - Continuation line 판별
+//! - 들여쓰기 규칙 (Example 253-258, 270-277)
+//! - 빈 줄로 시작하는 아이템 (Example 278-280)
+//! - 빈 아이템 (Example 281-284)
+//! - Paragraph 인터럽트 (Example 285)
+//! - 복합 블록 (Example 254, 259-260, 262-264)
 
 use crate::node::ListType;
 use super::helpers::count_leading_char;
@@ -54,7 +58,7 @@ impl ListMarker {
 }
 
 /// List Item 시작 정보
-/// try_start에서 반환되며, 같은 리스트 소속 여부 판단에 사용
+/// parse에서 반환되며, 같은 리스트 소속 여부 판단에 사용
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListItemStart {
     /// 마커 타입
@@ -105,27 +109,19 @@ impl ListItemStart {
     }
 }
 
-/// List Item 시작 성공 사유
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum ListItemStartReason {
+pub enum ListItemOk {
     /// 정상적인 시작
     Started(ListItemStart),
 }
 
-/// List Item 시작 아님 사유
 #[derive(Debug, Clone, PartialEq)]
-pub enum ListItemNotStartReason {
+pub enum ListItemErr {
     /// 4칸 이상 들여쓰기 (indented code block으로 해석됨)
     CodeBlockIndented,
     /// 유효한 리스트 마커 아님
     NotListMarker,
-}
-
-/// List 종료 사유
-#[derive(Debug, Clone, PartialEq)]
-pub enum ListEndReason {
-    /// 줄 다시 처리 필요 (다른 블록/새 리스트)
-    Reprocess,
 }
 
 /// 리스트 아이템 내용 줄
@@ -139,10 +135,6 @@ pub struct ItemLine {
 }
 
 impl ItemLine {
-    pub fn new(content: String, text_only: bool) -> Self {
-        Self { content, text_only }
-    }
-
     pub fn text(content: String) -> Self {
         Self {
             content,
@@ -165,16 +157,6 @@ impl ItemLine {
     }
 }
 
-/// List 계속 사유
-#[derive(Debug, Clone, PartialEq)]
-pub enum ListContinueReason {
-    /// 빈 줄 (pending_blank 설정)
-    Blank,
-    /// 새 아이템
-    NewItem(ListItemStart),
-    /// Continuation line (같은 아이템에 내용 추가)
-    ContinuationLine(ItemLine),
-}
 
 // =============================================================================
 // 함수
@@ -182,12 +164,12 @@ pub enum ListContinueReason {
 
 /// List Item 시작 줄인지 확인
 /// 성공 시 Ok(Started), 실패 시 Err(사유) 반환
-pub(crate) fn try_start(line: &str) -> Result<ListItemStartReason, ListItemNotStartReason> {
+pub(crate) fn parse(line: &str) -> Result<ListItemOk, ListItemErr> {
     let indent = count_leading_char(line, ' ');
 
     // 4칸 이상 들여쓰기는 코드 블록
     if indent > 3 {
-        return Err(ListItemNotStartReason::CodeBlockIndented);
+        return Err(ListItemErr::CodeBlockIndented);
     }
 
     let after_indent = &line[indent..];
@@ -195,76 +177,10 @@ pub(crate) fn try_start(line: &str) -> Result<ListItemStartReason, ListItemNotSt
     // Bullet 또는 Ordered 마커 시도 → content 추출
     try_bullet_marker(after_indent, indent)
         .or_else(|| try_ordered_marker(after_indent, indent))
-        .map(|start| ListItemStartReason::Started(start.with_content_from(line)))
-        .ok_or(ListItemNotStartReason::NotListMarker)
+        .map(|start| ListItemOk::Started(start.with_content_from(line)))
+        .ok_or(ListItemErr::NotListMarker)
 }
 
-/// List 종료 여부 확인
-/// Ok: 종료 (Reprocess)
-/// Err: 계속 (Blank, NewItem 또는 ContinuationLine)
-///
-/// # Arguments
-/// * `first_content_indent` - 첫 아이템의 content_indent (continuation 판단용)
-/// * `current_content_indent` - 현재 아이템의 content_indent (새 아이템 판단용)
-///
-/// Example 301: 새 아이템 판단은 current_content_indent 기준 (0-3칸은 같은 레벨)
-/// Example 303: continuation 판단은 first_content_indent 기준 (4칸 이상은 내용)
-pub(crate) fn try_end(
-    line: &str,
-    marker: &ListMarker,
-    first_content_indent: usize,
-    current_content_indent: usize,
-) -> Result<ListEndReason, ListContinueReason> {
-    // 빈 줄 처리 (항상 계속, 개수는 호출자가 추적)
-    if line.trim().is_empty() {
-        return Err(ListContinueReason::Blank);
-    }
-
-    let indent = count_leading_char(line, ' ');
-
-    // 1. 새 아이템 체크 (Example 301 지원)
-    // current_content_indent 미만 들여쓰기에서만 새 아이템 가능
-    if indent < current_content_indent {
-        // 같은 마커 타입의 List Item이면 새 아이템으로 계속
-        match try_start(line) {
-            Ok(ListItemStartReason::Started(new_start)) => {
-                if marker.is_same_type(&new_start.marker) {
-                    return Err(ListContinueReason::NewItem(new_start));
-                }
-                // 다른 마커 타입이면 리스트 종료
-                return Ok(ListEndReason::Reprocess);
-            }
-            Err(ListItemNotStartReason::CodeBlockIndented) => {
-                // 4칸 이상 들여쓰기 → 리스트 마커로 인식 안 됨
-                // 하지만 first_content_indent 이상이면 텍스트 전용 continuation
-                if indent >= first_content_indent {
-                    let strip_amount = indent.min(current_content_indent);
-                    let content = line[strip_amount..].to_string();
-                    // text_only: 재파싱 시 리스트로 인식 안 됨
-                    return Err(ListContinueReason::ContinuationLine(ItemLine::text_only(content)));
-                }
-            }
-            Err(ListItemNotStartReason::NotListMarker) => {
-                // 리스트 마커가 아니면 continuation으로 넘어감
-            }
-        }
-    }
-
-    // 2. Continuation line (Example 303 지원)
-    // first_content_indent 이상 들여쓰기는 현재 아이템의 내용
-    if indent >= first_content_indent {
-        // 내용 추출: min(indent, current_content_indent)만큼 제거
-        // 예: current_content_indent=5이고 indent=4이면 4칸 제거
-        // 예: current_content_indent=5이고 indent=6이면 5칸 제거
-        let strip_amount = indent.min(current_content_indent);
-        let content = line[strip_amount..].to_string();
-        // 일반 continuation (중첩 리스트 가능)
-        return Err(ListContinueReason::ContinuationLine(ItemLine::text(content)));
-    }
-
-    // 3. first_content_indent 미만 들여쓰기 + 새 아이템 아님 → 종료
-    Ok(ListEndReason::Reprocess)
-}
 
 /// Bullet 마커 감지 (-*+)
 fn try_bullet_marker(s: &str, indent: usize) -> Option<ListItemStart> {
@@ -283,7 +199,7 @@ fn try_bullet_marker(s: &str, indent: usize) -> Option<ListItemStart> {
             marker: ListMarker::Bullet(first_char),
             indent,
             content_indent: indent + 1,
-            content: String::new(), // try_start에서 채워짐
+            content: String::new(), // parse에서 채워짐
         });
     }
 
@@ -301,7 +217,7 @@ fn try_bullet_marker(s: &str, indent: usize) -> Option<ListItemStart> {
         marker: ListMarker::Bullet(first_char),
         indent,
         content_indent,
-        content: String::new(), // try_start에서 채워짐
+        content: String::new(), // parse에서 채워짐
     })
 }
 
@@ -338,7 +254,7 @@ fn try_ordered_marker(s: &str, indent: usize) -> Option<ListItemStart> {
             },
             indent,
             content_indent: indent + marker_len,
-            content: String::new(), // try_start에서 채워짐
+            content: String::new(), // parse에서 채워짐
         });
     }
 
@@ -360,237 +276,90 @@ fn try_ordered_marker(s: &str, indent: usize) -> Option<ListItemStart> {
         },
         indent,
         content_indent,
-        content: String::new(), // try_start에서 채워짐
+        content: String::new(), // parse에서 채워짐
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::node::{BlockNode, InlineNode, ListItemNode};
+    use crate::parser::parse as parse_doc;
     use rstest::rstest;
 
-    // 5.2 List Items - 마커 인식 (try_start)
+    // 5.2 List Items - 마커 인식 (parse) 성공 케이스
     #[rstest]
-    // Example 261: 마커 뒤 공백 필수
-    #[case("-item", Err(ListItemNotStartReason::NotListMarker))]
-    #[case("--item", Err(ListItemNotStartReason::NotListMarker))]
-    #[case("1.item", Err(ListItemNotStartReason::NotListMarker))]
     // 기본 Bullet 마커
-    #[case(
-        "- item",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('-', 0, 2, "item")))
-    )]
-    #[case(
-        "+ item",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('+', 0, 2, "item")))
-    )]
-    #[case(
-        "* item",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('*', 0, 2, "item")))
-    )]
+    #[case("- item", ListItemStart::bullet('-', 0, 2, "item"))]
+    #[case("+ item", ListItemStart::bullet('+', 0, 2, "item"))]
+    #[case("* item", ListItemStart::bullet('*', 0, 2, "item"))]
     // Bullet 마커 앞 들여쓰기 (0-3칸)
-    #[case(
-        " - item",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('-', 1, 3, "item")))
-    )]
-    #[case(
-        "  - item",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('-', 2, 4, "item")))
-    )]
-    #[case(
-        "   - item",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('-', 3, 5, "item")))
-    )]
+    #[case(" - item", ListItemStart::bullet('-', 1, 3, "item"))]
+    #[case("  - item", ListItemStart::bullet('-', 2, 4, "item"))]
+    #[case("   - item", ListItemStart::bullet('-', 3, 5, "item"))]
     // Bullet 마커 뒤 여러 공백
-    #[case(
-        "-  item",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('-', 0, 3, "item")))
-    )]
-    #[case(
-        "-   item",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('-', 0, 4, "item")))
-    )]
-    #[case(
-        "-    item",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('-', 0, 5, "item")))
-    )]
-    #[case(
-        "-     item",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('-', 0, 5, " item")))
-    )]
+    #[case("-  item", ListItemStart::bullet('-', 0, 3, "item"))]
+    #[case("-   item", ListItemStart::bullet('-', 0, 4, "item"))]
+    #[case("-    item", ListItemStart::bullet('-', 0, 5, "item"))]
+    #[case("-     item", ListItemStart::bullet('-', 0, 5, " item"))]
     // Bullet 빈 아이템
-    #[case(
-        "-",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('-', 0, 1, "")))
-    )]
-    #[case(
-        "+",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('+', 0, 1, "")))
-    )]
-    #[case(
-        "*",
-        Ok(ListItemStartReason::Started(ListItemStart::bullet('*', 0, 1, "")))
-    )]
+    #[case("-", ListItemStart::bullet('-', 0, 1, ""))]
+    #[case("+", ListItemStart::bullet('+', 0, 1, ""))]
+    #[case("*", ListItemStart::bullet('*', 0, 1, ""))]
     // 기본 Ordered 마커
-    #[case(
-        "1. item",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(1, '.', 0, 3, "item")))
-    )]
-    #[case(
-        "2. item",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(2, '.', 0, 3, "item")))
-    )]
-    #[case(
-        "10. item",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(10, '.', 0, 4, "item")))
-    )]
-    #[case(
-        "123. item",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(123, '.', 0, 5, "item")))
-    )]
-    #[case(
-        "1) item",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(1, ')', 0, 3, "item")))
-    )]
-    #[case(
-        "2) item",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(2, ')', 0, 3, "item")))
-    )]
-    #[case(
-        "10) item",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(10, ')', 0, 4, "item")))
-    )]
+    #[case("1. item", ListItemStart::ordered(1, '.', 0, 3, "item"))]
+    #[case("2. item", ListItemStart::ordered(2, '.', 0, 3, "item"))]
+    #[case("10. item", ListItemStart::ordered(10, '.', 0, 4, "item"))]
+    #[case("123. item", ListItemStart::ordered(123, '.', 0, 5, "item"))]
+    #[case("1) item", ListItemStart::ordered(1, ')', 0, 3, "item"))]
+    #[case("2) item", ListItemStart::ordered(2, ')', 0, 3, "item"))]
+    #[case("10) item", ListItemStart::ordered(10, ')', 0, 4, "item"))]
     // Ordered 마커 앞 들여쓰기
-    #[case(
-        " 1. item",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(1, '.', 1, 4, "item")))
-    )]
-    #[case(
-        "  1. item",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(1, '.', 2, 5, "item")))
-    )]
-    #[case(
-        "   1. item",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(1, '.', 3, 6, "item")))
-    )]
+    #[case(" 1. item", ListItemStart::ordered(1, '.', 1, 4, "item"))]
+    #[case("  1. item", ListItemStart::ordered(1, '.', 2, 5, "item"))]
+    #[case("   1. item", ListItemStart::ordered(1, '.', 3, 6, "item"))]
     // Ordered 마커 뒤 여러 공백
-    #[case(
-        "1.  item",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(1, '.', 0, 4, "item")))
-    )]
-    #[case(
-        "1.   item",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(1, '.', 0, 5, "item")))
-    )]
-    // =========================================================================
-    // Example 265-269: Ordered 마커 숫자 제약
-    // =========================================================================
+    #[case("1.  item", ListItemStart::ordered(1, '.', 0, 4, "item"))]
+    #[case("1.   item", ListItemStart::ordered(1, '.', 0, 5, "item"))]
     // Example 265: 9자리까지 허용
-    #[case(
-        "123456789. ok",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(123456789, '.', 0, 11, "ok")))
-    )]
-    // Example 266: 10자리 이상은 마커 아님 (테스트는 에러 케이스 섹션에)
+    #[case("123456789. ok", ListItemStart::ordered(123456789, '.', 0, 11, "ok"))]
     // Example 267: 0으로 시작 가능
-    #[case(
-        "0. ok",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(0, '.', 0, 3, "ok")))
-    )]
+    #[case("0. ok", ListItemStart::ordered(0, '.', 0, 3, "ok"))]
     // Example 268: 선행 0 허용 (값은 3)
-    #[case(
-        "003. ok",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(3, '.', 0, 5, "ok")))
-    )]
-    // Example 269: 음수는 마커 아님 (테스트는 에러 케이스 섹션에)
+    #[case("003. ok", ListItemStart::ordered(3, '.', 0, 5, "ok"))]
     // Ordered 빈 아이템
-    #[case(
-        "1.",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(1, '.', 0, 2, "")))
-    )]
-    #[case(
-        "1)",
-        Ok(ListItemStartReason::Started(ListItemStart::ordered(1, ')', 0, 2, "")))
-    )]
-    // 에러 케이스
-    #[case("    - item", Err(ListItemNotStartReason::CodeBlockIndented))]
-    #[case("    1. item", Err(ListItemNotStartReason::CodeBlockIndented))]
-    #[case("text", Err(ListItemNotStartReason::NotListMarker))]
-    #[case("", Err(ListItemNotStartReason::NotListMarker))]
-    // Example 266: 10자리 이상은 마커 아님
-    #[case("1234567890. not ok", Err(ListItemNotStartReason::NotListMarker))]
-    // Example 269: 음수는 마커 아님 ('-'가 bullet 마커로 인식되지 않고 숫자도 아님)
-    #[case("-1. not ok", Err(ListItemNotStartReason::NotListMarker))]
-    #[case("a. item", Err(ListItemNotStartReason::NotListMarker))]
-    #[case("1: item", Err(ListItemNotStartReason::NotListMarker))]
-    fn test_try_start(
+    #[case("1.", ListItemStart::ordered(1, '.', 0, 2, ""))]
+    #[case("1)", ListItemStart::ordered(1, ')', 0, 2, ""))]
+    fn test_parse_ok(
         #[case] input: &str,
-        #[case] expected: Result<ListItemStartReason, ListItemNotStartReason>,
+        #[case] expected: ListItemStart,
     ) {
-        assert_eq!(try_start(input), expected);
+        assert_eq!(parse(input), Ok(ListItemOk::Started(expected)));
     }
 
-    // 5.2 List Items - 종료/계속 판별 (try_end)
-    // 인자: (line, marker, first_content_indent, current_content_indent, expected)
+    // 5.2 List Items - 마커 인식 (parse) 실패 케이스
     #[rstest]
-    // 빈 줄 → Blank
-    #[case("", ListMarker::Bullet('-'), 2, 2, Err(ListContinueReason::Blank))]
-    #[case("  ", ListMarker::Bullet('-'), 2, 2, Err(ListContinueReason::Blank))]
-    #[case("\t", ListMarker::Bullet('-'), 2, 2, Err(ListContinueReason::Blank))]
-    // 같은 마커 → 새 아이템
-    #[case(
-        "- b",
-        ListMarker::Bullet('-'),
-        2, 2,
-        Err(ListContinueReason::NewItem(ListItemStart::bullet('-', 0, 2, "b")))
-    )]
-    #[case(
-        "+ b",
-        ListMarker::Bullet('+'),
-        2, 2,
-        Err(ListContinueReason::NewItem(ListItemStart::bullet('+', 0, 2, "b")))
-    )]
-    #[case(
-        "* b",
-        ListMarker::Bullet('*'),
-        2, 2,
-        Err(ListContinueReason::NewItem(ListItemStart::bullet('*', 0, 2, "b")))
-    )]
-    #[case("2. b", ListMarker::Ordered { start: 1, delimiter: '.' }, 3, 3, Err(ListContinueReason::NewItem(ListItemStart::ordered(2, '.', 0, 3, "b"))))]
-    #[case("2) b", ListMarker::Ordered { start: 1, delimiter: ')' }, 3, 3, Err(ListContinueReason::NewItem(ListItemStart::ordered(2, ')', 0, 3, "b"))))]
-    // Continuation line (text_only=false: 일반 continuation)
-    #[case("  continued", ListMarker::Bullet('-'), 2, 2, Err(ListContinueReason::ContinuationLine(ItemLine::text("continued".to_string()))))]
-    #[case("   continued", ListMarker::Bullet('-'), 2, 2, Err(ListContinueReason::ContinuationLine(ItemLine::text(" continued".to_string()))))]
-    #[case("    continued", ListMarker::Bullet('-'), 2, 2, Err(ListContinueReason::ContinuationLine(ItemLine::text("  continued".to_string()))))]
-    // 리스트 종료 (다른 마커)
-    #[case("+ b", ListMarker::Bullet('-'), 2, 2, Ok(ListEndReason::Reprocess))]
-    #[case("* b", ListMarker::Bullet('-'), 2, 2, Ok(ListEndReason::Reprocess))]
-    #[case("- b", ListMarker::Bullet('+'), 2, 2, Ok(ListEndReason::Reprocess))]
-    #[case("1) b", ListMarker::Ordered { start: 1, delimiter: '.' }, 3, 3, Ok(ListEndReason::Reprocess))]
-    #[case("1. b", ListMarker::Ordered { start: 1, delimiter: ')' }, 3, 3, Ok(ListEndReason::Reprocess))]
-    #[case("1. b", ListMarker::Bullet('-'), 2, 2, Ok(ListEndReason::Reprocess))]
-    #[case("- b", ListMarker::Ordered { start: 1, delimiter: '.' }, 3, 3, Ok(ListEndReason::Reprocess))]
-    // 리스트 종료 (비리스트 내용)
-    #[case("some text", ListMarker::Bullet('-'), 2, 2, Ok(ListEndReason::Reprocess))]
-    #[case("# heading", ListMarker::Bullet('-'), 2, 2, Ok(ListEndReason::Reprocess))]
-    #[case(
-        "> blockquote",
-        ListMarker::Bullet('-'),
-        2, 2,
-        Ok(ListEndReason::Reprocess)
-    )]
-    #[case("```code", ListMarker::Bullet('-'), 2, 2, Ok(ListEndReason::Reprocess))]
-    // Example 303: 4칸 들여쓰기된 마커는 continuation (first=2, current=5)
-    // "   - d"의 content_indent=5, "    - e"(4칸)는 continuation이어야 함
-    // 내용: min(4, 5)=4칸 제거 → "- e", text_only=true (리스트 마커 아님)
-    #[case("    - e", ListMarker::Bullet('-'), 2, 5, Err(ListContinueReason::ContinuationLine(ItemLine::text_only("- e".to_string()))))]
-    fn test_try_end(
-        #[case] line: &str,
-        #[case] marker: ListMarker,
-        #[case] first_content_indent: usize,
-        #[case] current_content_indent: usize,
-        #[case] expected: Result<ListEndReason, ListContinueReason>,
+    // Example 261: 마커 뒤 공백 필수
+    #[case("-item", ListItemErr::NotListMarker)]
+    #[case("--item", ListItemErr::NotListMarker)]
+    #[case("1.item", ListItemErr::NotListMarker)]
+    // 4칸 이상 들여쓰기는 코드 블록
+    #[case("    - item", ListItemErr::CodeBlockIndented)]
+    #[case("    1. item", ListItemErr::CodeBlockIndented)]
+    // 유효한 리스트 마커 아님
+    #[case("text", ListItemErr::NotListMarker)]
+    #[case("", ListItemErr::NotListMarker)]
+    // Example 266: 10자리 이상은 마커 아님
+    #[case("1234567890. not ok", ListItemErr::NotListMarker)]
+    // Example 269: 음수는 마커 아님
+    #[case("-1. not ok", ListItemErr::NotListMarker)]
+    #[case("a. item", ListItemErr::NotListMarker)]
+    #[case("1: item", ListItemErr::NotListMarker)]
+    fn test_parse_err(
+        #[case] input: &str,
+        #[case] expected: ListItemErr,
     ) {
-        assert_eq!(try_end(line, &marker, first_content_indent, current_content_indent), expected);
+        assert_eq!(parse(input), Err(expected));
     }
 
     // === ListMarker::to_list_type 테스트 ===
@@ -630,5 +399,234 @@ mod tests {
     #[case(ListMarker::Bullet('-'), ListMarker::Ordered { start: 1, delimiter: '.' }, false)]
     fn test_is_same_type(#[case] a: ListMarker, #[case] b: ListMarker, #[case] expected: bool) {
         assert_eq!(a.is_same_type(&b), expected);
+    }
+
+    // =========================================================================
+    // 5.2 List Items - 통합 테스트 (Example 253-285)
+    // =========================================================================
+    #[rstest]
+    // Example 253: 리스트 아닌 일반 블록 (대조용)
+    #[case("A paragraph\nwith two lines.\n\n    indented code\n\n> A block quote.", vec![
+        BlockNode::paragraph(vec![InlineNode::text("A paragraph\nwith two lines.")]),
+        BlockNode::code_block(None, "indented code"),
+        BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("A block quote.")])]),
+    ])]
+    // Example 254: 아이템 내 paragraph + indented code + blockquote
+    #[case("1.  A paragraph\n    with two lines.\n\n        indented code\n\n    > A block quote.", vec![
+        BlockNode::ordered_list('.', 1, false, vec![
+            ListItemNode::new(vec![
+                BlockNode::paragraph(vec![InlineNode::text("A paragraph\nwith two lines.")]),
+                BlockNode::code_block(None, "indented code"),
+                BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("A block quote.")])]),
+            ]),
+        ])
+    ])]
+    // Example 255: 들여쓰기 부족 (1칸) → 리스트 종료
+    #[case("- one\n\n two", vec![
+        BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("one")])])]),
+        BlockNode::paragraph(vec![InlineNode::text("two")]),
+    ])]
+    // Example 256: 충분한 들여쓰기 (2칸) → 같은 아이템 두 번째 단락 (loose)
+    #[case("- one\n\n  two", vec![
+        BlockNode::bullet_list(false, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("one")]), BlockNode::paragraph(vec![InlineNode::text("two")])]),
+        ])
+    ])]
+    // Example 257: content_indent 부족 → 리스트 종료 + indented code
+    #[case(" -    one\n\n     two", vec![
+        BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("one")])])]),
+        BlockNode::code_block(None, " two"),
+    ])]
+    // Example 258: content_indent 충족 → 같은 아이템 (loose)
+    #[case(" -    one\n\n      two", vec![
+        BlockNode::bullet_list(false, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("one")]), BlockNode::paragraph(vec![InlineNode::text("two")])]),
+        ])
+    ])]
+    // Example 261: 마커 뒤 공백 없으면 paragraph
+    #[case("-one", vec![BlockNode::paragraph(vec![InlineNode::text("-one")])])]
+    #[case("2.two", vec![BlockNode::paragraph(vec![InlineNode::text("2.two")])])]
+    // Example 262: 아이템 내 여러 빈 줄
+    #[case("- foo\n\n\n  bar", vec![
+        BlockNode::bullet_list(false, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")]), BlockNode::paragraph(vec![InlineNode::text("bar")])]),
+        ])
+    ])]
+    // Example 263: 아이템 내 code fence + paragraph + blockquote
+    #[case("1.  foo\n\n    ```\n    bar\n    ```\n\n    baz\n\n    > bam", vec![
+        BlockNode::ordered_list('.', 1, false, vec![
+            ListItemNode::new(vec![
+                BlockNode::paragraph(vec![InlineNode::text("foo")]),
+                BlockNode::code_block(None, "bar"),
+                BlockNode::paragraph(vec![InlineNode::text("baz")]),
+                BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bam")])]),
+            ]),
+        ])
+    ])]
+    // Example 264: 리스트 아이템 내 코드 블록 (빈 줄 보존)
+    #[case("- Foo\n\n      bar\n\n\n      baz", vec![
+        BlockNode::bullet_list(false, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("Foo")]), BlockNode::code_block(None, "bar\n\n\nbaz")]),
+        ])
+    ])]
+    // Example 265: 9자리 숫자 허용
+    #[case("123456789. ok", vec![BlockNode::ordered_list('.', 123456789, true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("ok")])])])])]
+    // Example 266: 10자리 숫자는 마커 아님 → paragraph
+    #[case("1234567890. not ok", vec![BlockNode::paragraph(vec![InlineNode::text("1234567890. not ok")])])]
+    // Example 267: 0 시작 허용
+    #[case("0. ok", vec![BlockNode::ordered_list('.', 0, true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("ok")])])])])]
+    // Example 268: 선행 0 허용 (003 → start=3)
+    #[case("003. ok", vec![BlockNode::ordered_list('.', 3, true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("ok")])])])])]
+    // Example 269: 음수는 마커 아님 → paragraph
+    #[case("-1. not ok", vec![BlockNode::paragraph(vec![InlineNode::text("-1. not ok")])])]
+    // Example 270: 아이템 내 indented code (content_indent=2, 6칸 들여쓰기)
+    #[case("- foo\n\n      bar", vec![
+        BlockNode::bullet_list(false, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")]), BlockNode::code_block(None, "bar")]),
+        ])
+    ])]
+    // Example 271: ordered 마커 + 아이템 내 indented code
+    #[case("  10.  foo\n\n           bar", vec![
+        BlockNode::ordered_list('.', 10, false, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")]), BlockNode::code_block(None, "bar")]),
+        ])
+    ])]
+    // Example 272: 리스트 아닌 indented code (대조용)
+    #[case("    indented code\n\nparagraph\n\n    more code", vec![
+        BlockNode::code_block(None, "indented code"),
+        BlockNode::paragraph(vec![InlineNode::text("paragraph")]),
+        BlockNode::code_block(None, "more code"),
+    ])]
+    // Example 275: 리스트 아닌 paragraph (대조용)
+    #[case("   foo\n\nbar", vec![
+        BlockNode::paragraph(vec![InlineNode::text("foo")]),
+        BlockNode::paragraph(vec![InlineNode::text("bar")]),
+    ])]
+    // Example 276: content_indent 부족 → 리스트 종료
+    #[case("-    foo\n\n  bar", vec![
+        BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])])]),
+        BlockNode::paragraph(vec![InlineNode::text("bar")]),
+    ])]
+    // Example 277: content_indent 충족 → 같은 아이템 (loose)
+    #[case("-  foo\n\n   bar", vec![
+        BlockNode::bullet_list(false, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")]), BlockNode::paragraph(vec![InlineNode::text("bar")])]),
+        ])
+    ])]
+    // Example 278: 빈 줄로 시작하는 아이템
+    // NOTE: 세 번째 아이템 코드 블록은 명세상 "baz"지만 현재 " baz" (향후 개선)
+    #[case("-\n  foo\n-\n  ```\n  bar\n  ```\n-\n      baz", vec![
+        BlockNode::bullet_list(true, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])]),
+            ListItemNode::new(vec![BlockNode::code_block(None, "bar")]),
+            ListItemNode::new(vec![BlockNode::code_block(None, " baz")]),
+        ])
+    ])]
+    // Example 281: 중간 빈 아이템 (bullet)
+    #[case("- foo\n-\n- bar", vec![
+        BlockNode::bullet_list(true, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])]),
+            ListItemNode::new(vec![]),
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])]),
+        ])
+    ])]
+    // Example 282: trailing whitespace 빈 아이템
+    #[case("- foo\n-   \n- bar", vec![
+        BlockNode::bullet_list(true, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])]),
+            ListItemNode::new(vec![]),
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])]),
+        ])
+    ])]
+    // Example 283: 중간 빈 아이템 (ordered)
+    #[case("1. foo\n2.\n3. bar", vec![
+        BlockNode::ordered_list('.', 1, true, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])]),
+            ListItemNode::new(vec![]),
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])]),
+        ])
+    ])]
+    // Example 284: 단일 빈 아이템
+    #[case("*", vec![BlockNode::bullet_list(true, vec![ListItemNode::new(vec![])])])]
+    // Example 285: 빈 아이템은 paragraph 인터럽트 불가
+    #[case("foo\n*", vec![BlockNode::paragraph(vec![InlineNode::text("foo\n*")])])]
+    #[case("foo\n1.", vec![BlockNode::paragraph(vec![InlineNode::text("foo\n1.")])])]
+    // 추가 케이스: 단일 아이템 (마커 종류별)
+    #[case("- item", vec![BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("item")])])])])]
+    #[case("1. item", vec![BlockNode::ordered_list('.', 1, true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("item")])])])])]
+    #[case("1) item", vec![BlockNode::ordered_list(')', 1, true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("item")])])])])]
+    // 추가 케이스: Ordered 시작 번호
+    #[case("5. item", vec![BlockNode::ordered_list('.', 5, true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("item")])])])])]
+    #[case("10. item", vec![BlockNode::ordered_list('.', 10, true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("item")])])])])]
+    // 추가 케이스: Continuation line
+    #[case("- line1\n  line2\n  line3", vec![BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("line1\nline2\nline3")])])])])]
+    // 추가 케이스: 빈 아이템 연속 + 빈 줄 = loose
+    #[case("-\n\n- foo", vec![
+        BlockNode::bullet_list(false, vec![ListItemNode::new(vec![]), ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])])]),
+    ])]
+    fn test_list_item(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse_doc(input);
+        assert_eq!(doc.children, expected);
+    }
+
+    // =========================================================================
+    // 5.2 List Items - 미지원 케이스
+    // =========================================================================
+    #[rstest]
+    // Example 279: 마커 뒤 공백만 있는 빈 줄 시작
+    #[case("-   \n  foo", vec![
+        BlockNode::bullet_list(true, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])]),
+        ])
+    ])]
+    // Example 280: 빈 줄 2개 → 빈 아이템 + paragraph
+    #[case("-\n\n  foo", vec![
+        BlockNode::bullet_list(true, vec![ListItemNode::new(vec![])]),
+        BlockNode::paragraph(vec![InlineNode::text("foo")]),
+    ])]
+    // Example 259: blockquote 내부 ordered list (복합 중첩)
+    #[case("   > > 1.  one\n>>\n>>     two", vec![
+        BlockNode::blockquote(vec![BlockNode::blockquote(vec![
+            BlockNode::ordered_list('.', 1, false, vec![
+                ListItemNode::new(vec![
+                    BlockNode::paragraph(vec![InlineNode::text("one")]),
+                    BlockNode::paragraph(vec![InlineNode::text("two")]),
+                ]),
+            ]),
+        ])]),
+    ])]
+    // Example 260: blockquote 내부 bullet list
+    #[case(">>- one\n>>\n  >  > two", vec![
+        BlockNode::blockquote(vec![BlockNode::blockquote(vec![
+            BlockNode::bullet_list(true, vec![
+                ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("one")])]),
+            ]),
+            BlockNode::paragraph(vec![InlineNode::text("two")]),
+        ])]),
+    ])]
+    // Example 273: 아이템이 indented code로 시작 (마커 뒤 5칸)
+    #[case("1.     indented code\n\n   paragraph\n\n       more code", vec![
+        BlockNode::ordered_list('.', 1, false, vec![
+            ListItemNode::new(vec![
+                BlockNode::code_block(None, "indented code"),
+                BlockNode::paragraph(vec![InlineNode::text("paragraph")]),
+                BlockNode::code_block(None, "more code"),
+            ]),
+        ])
+    ])]
+    // Example 274: 아이템이 indented code로 시작 (마커 뒤 6칸, 여분 공백 1칸)
+    #[case("1.      indented code\n\n   paragraph\n\n       more code", vec![
+        BlockNode::ordered_list('.', 1, false, vec![
+            ListItemNode::new(vec![
+                BlockNode::code_block(None, " indented code"),
+                BlockNode::paragraph(vec![InlineNode::text("paragraph")]),
+                BlockNode::code_block(None, "more code"),
+            ]),
+        ])
+    ])]
+    #[ignore = "현재 파서 미지원 (빈 줄 시작 아이템, blockquote 내 리스트, indented code 시작)"]
+    fn test_list_item_pending(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse_doc(input);
+        assert_eq!(doc.children, expected);
     }
 }
