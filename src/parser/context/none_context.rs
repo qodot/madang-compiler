@@ -1,8 +1,8 @@
 //! NoneContext: 새 블록 시작 대기 상태
 
 use super::{
-    CodeBlockIndentedStartReason, ItemLine, LineResult,
-    ListItemStartReason, ParagraphContext, ParsingContext,
+    CodeBlockIndentedStartReason, ItemLine, LineResult, ListContext, ParagraphContext,
+    ParsingContext,
 };
 use crate::parser::code_block_fenced::{parse as parse_code_block_fenced, CodeBlockFencedOk};
 use crate::parser::code_block_indented::try_start as try_start_code_block_indented;
@@ -47,17 +47,15 @@ impl NoneContext {
         }
 
         // List 시작 감지
-        if let Ok(ListItemStartReason::Started(start)) = list_item::try_start(line) {
-            let content = start.content.clone();
-            let content_indent = start.content_indent;
-            let context = ParsingContext::List {
+        if let Ok(list_item::ListItemOk::Started(start)) = list_item::parse(line) {
+            let context = ParsingContext::List(ListContext {
+                current_content_indent: start.content_indent,
+                current_item_lines: vec![ItemLine::text(start.content.clone())],
                 first_item_start: start,
                 items: Vec::new(),
-                current_item_lines: vec![ItemLine::text(content)],
-                current_content_indent: content_indent,
                 tight: true,
                 pending_blank_count: 0,
-            };
+            });
             return (vec![], context);
         }
 

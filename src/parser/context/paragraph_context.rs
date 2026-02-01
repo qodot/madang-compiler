@@ -1,8 +1,7 @@
 //! ParagraphContext: Paragraph 파싱 중 상태
 
 use super::{
-    HeadingSetextStartReason, ItemLine,
-    LineResult, ListItemStartReason, ParsingContext,
+    HeadingSetextStartReason, ItemLine, LineResult, ListContext, ParsingContext,
 };
 use crate::node::{HeadingNode, InlineNode, TextNode};
 use crate::parser::code_block_fenced::{parse as parse_code_block_fenced, CodeBlockFencedOk};
@@ -76,19 +75,18 @@ impl ParagraphContext {
 
         // List 시작이면 Paragraph 종료 후 List 시작
         // CommonMark: List는 Paragraph를 인터럽트 가능 (단, 빈 아이템 제외)
-        if let Ok(ListItemStartReason::Started(start)) = list_item::try_start(line) {
+        if let Ok(list_item::ListItemOk::Started(start)) = list_item::parse(line) {
             // 빈 아이템은 Paragraph 인터럽트 불가 (CommonMark 명세)
             if !start.content.is_empty() {
                 let text = self.pending_lines.join("\n");
-                let content_indent = start.content_indent;
-                let context = ParsingContext::List {
-                    first_item_start: start.clone(),
+                let context = ParsingContext::List(ListContext {
+                    current_content_indent: start.content_indent,
+                    current_item_lines: vec![ItemLine::text(start.content.clone())],
+                    first_item_start: start,
                     items: Vec::new(),
-                    current_item_lines: vec![ItemLine::text(start.content)],
-                    current_content_indent: content_indent,
                     tight: true,
                     pending_blank_count: 0,
-                };
+                });
                 return (vec![paragraph::parse(&text)], context);
             }
         }
