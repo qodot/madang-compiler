@@ -15,16 +15,11 @@ mod list_item;
 mod paragraph;
 mod thematic_break;
 
-use crate::node::{
-    BlockNode, CodeBlockNode, DocumentNode, InlineNode, ListItemNode, ListNode,
-    ParagraphNode, TextNode,
-};
+use crate::node::{BlockNode, CodeBlockNode, DocumentNode};
 use code_block_fenced::{parse as parse_code_block_fenced, CodeBlockFencedOk};
 use code_block_indented::try_start as try_start_code_block_indented;
 use context::{
-    CodeBlockFencedStart, CodeBlockIndentedStartReason,
-    ItemLine, LineResult, ListContinueReason, ListEndReason,
-    ListItemStart, NoneContext, ParsingContext,
+    CodeBlockFencedStart, CodeBlockIndentedStartReason, LineResult, NoneContext, ParsingContext,
 };
 use helpers::trim_blank_lines;
 
@@ -60,14 +55,7 @@ fn process_line(line: &str, context: ParsingContext, nodes: Vec<BlockNode>) -> P
         ParsingContext::Blockquote { pending_lines } => {
             process_line_in_blockquote(line, pending_lines)
         }
-        ParsingContext::List {
-            first_item_start,
-            items,
-            current_item_lines,
-            current_content_indent,
-            tight,
-            pending_blank_count,
-        } => process_line_in_list(line, first_item_start, items, current_item_lines, current_content_indent, tight, pending_blank_count),
+        ParsingContext::List(ctx) => ctx.parse(line),
         ParsingContext::CodeBlockIndented { pending_lines, pending_blank_count } => {
             process_line_in_code_block_indented(line, pending_lines, pending_blank_count)
         }
@@ -103,171 +91,6 @@ fn process_line_in_code_block(
         }
         CodeBlockFencedOk::Start(_) => unreachable!("parse with Some context should return End or Content"),
     }
-}
-
-/// List 상태에서 줄 처리
-/// 반환: (새로 완성된 노드들, 새 컨텍스트)
-fn process_line_in_list(
-    current_line: &str,
-    first_item_start: ListItemStart,
-    items: Vec<Vec<ItemLine>>,
-    current_item_lines: Vec<ItemLine>,
-    current_content_indent: usize,
-    tight: bool,
-    pending_blank_count: usize,
-) -> LineResult {
-    // Example 301: 새 아이템 판단은 current_content_indent 기준
-    // Example 303: continuation 판단은 first_item의 content_indent 기준
-    match list_item::try_end(
-        current_line,
-        &first_item_start.marker,
-        first_item_start.content_indent,
-        current_content_indent,
-    ) {
-        // 종료: List 노드 생성 + 현재 줄 재처리
-        Ok(ListEndReason::Reprocess) => {
-            let list_node = build_list_node(&first_item_start, items, current_item_lines, tight);
-            let (more_nodes, new_context) = NoneContext.parse(current_line);
-            let mut nodes = vec![list_node];
-            nodes.extend(more_nodes);
-            (nodes, new_context)
-        }
-        // 계속: 빈 줄
-        Err(ListContinueReason::Blank) => {
-            let context = ParsingContext::List {
-                first_item_start,
-                items,
-                current_item_lines,
-                current_content_indent,
-                tight,
-                pending_blank_count: pending_blank_count + 1,
-            };
-            (vec![], context)
-        }
-        // 계속: 새 아이템
-        Err(ListContinueReason::NewItem(new_start)) => {
-            let items = push_item(items, current_item_lines);
-            // 빈 줄이 있었으면 loose list
-            let tight = tight && pending_blank_count == 0;
-            // 새 아이템의 content_indent로 업데이트
-            let new_content_indent = new_start.content_indent;
-            let context = ParsingContext::List {
-                first_item_start,
-                items,
-                current_item_lines: vec![ItemLine::text(new_start.content)],
-                current_content_indent: new_content_indent,
-                tight,
-                pending_blank_count: 0,
-            };
-            (vec![], context)
-        }
-        // 계속: continuation line
-        Err(ListContinueReason::ContinuationLine(item_line)) => {
-            // 대기 중인 빈 줄을 내용에 추가
-            let mut lines = current_item_lines;
-            for _ in 0..pending_blank_count {
-                lines.push(ItemLine::blank());
-            }
-            lines.push(item_line);
-            // 아이템 내에 빈 줄이 있었으면 loose list
-            let tight = tight && pending_blank_count == 0;
-            let context = ParsingContext::List {
-                first_item_start,
-                items,
-                current_item_lines: lines,
-                current_content_indent,
-                tight,
-                pending_blank_count: 0,
-            };
-            (vec![], context)
-        }
-    }
-}
-
-/// List 노드 생성 (완성된 아이템들로부터)
-fn build_list_node(
-    first_item_start: &ListItemStart,
-    items: Vec<Vec<ItemLine>>,
-    current_item_lines: Vec<ItemLine>,
-    tight: bool,
-) -> BlockNode {
-    let (list_type, start) = first_item_start.marker.to_list_type();
-    let all_items = push_item(items, current_item_lines);
-
-    // 각 아이템을 파싱하여 ListItem 노드 생성
-    let list_children: Vec<ListItemNode> = all_items
-        .iter()
-        .map(|item_lines| {
-            let parsed_blocks = parse_item_lines(item_lines);
-            ListItemNode::new(parsed_blocks)
-        })
-        .collect();
-
-    BlockNode::List(ListNode::new(list_type, start, tight, list_children))
-}
-
-/// 리스트 아이템 내용 파싱
-/// text_only 플래그를 고려하여 처리
-fn parse_item_lines(lines: &[ItemLine]) -> Vec<BlockNode> {
-    // text_only가 있는지 확인
-    let has_any_text_only = lines.iter().any(|l| l.text_only);
-
-    if has_any_text_only {
-        // text_only가 있는 경우: 청크 단위로 처리
-        // 빈 줄로 분리하되, 빈 줄 후 들여쓰기된 내용은 이전 청크에 포함
-        parse_item_lines_with_text_only(lines)
-    } else {
-        // text_only가 없는 경우: 전체를 한 번에 재파싱
-        // 빈 줄이 있어도 리스트 continuation으로 처리됨
-        let content: String = lines.iter().map(|l| l.content.as_str()).collect::<Vec<_>>().join("\n");
-        let doc = parse(&content);
-        doc.children
-    }
-}
-
-/// text_only가 있는 아이템 내용 파싱
-fn parse_item_lines_with_text_only(lines: &[ItemLine]) -> Vec<BlockNode> {
-    // 빈 줄을 기준으로 청크로 분리
-    let mut chunks: Vec<(Vec<&ItemLine>, bool)> = vec![]; // (lines, has_text_only)
-    let mut current_chunk: Vec<&ItemLine> = vec![];
-    let mut current_has_text_only = false;
-
-    for line in lines {
-        if line.content.trim().is_empty() && !line.text_only {
-            if !current_chunk.is_empty() {
-                chunks.push((current_chunk, current_has_text_only));
-                current_chunk = vec![];
-                current_has_text_only = false;
-            }
-        } else {
-            if line.text_only {
-                current_has_text_only = true;
-            }
-            current_chunk.push(line);
-        }
-    }
-    if !current_chunk.is_empty() {
-        chunks.push((current_chunk, current_has_text_only));
-    }
-
-    let mut result: Vec<BlockNode> = vec![];
-
-    for (chunk, has_text_only) in chunks {
-        let content: String = chunk.iter().map(|l| l.content.as_str()).collect::<Vec<_>>().join("\n");
-
-        if has_text_only {
-            // text_only가 있는 청크는 무조건 paragraph로 처리
-            result.push(BlockNode::Paragraph(ParagraphNode::new(vec![
-                InlineNode::Text(TextNode::new(&content)),
-            ])));
-        } else {
-            // 일반 청크는 전체 파서로 파싱
-            let doc = parse(&content);
-            result.extend(doc.children);
-        }
-    }
-
-    result
 }
 
 /// Indented Code Block 상태에서 줄 처리
@@ -312,12 +135,6 @@ fn process_line_in_code_block_indented(
             (nodes, new_context)
         }
     }
-}
-
-/// 아이템 리스트에 아이템 추가
-fn push_item(mut items: Vec<Vec<ItemLine>>, item: Vec<ItemLine>) -> Vec<Vec<ItemLine>> {
-    items.push(item);
-    items
 }
 
 /// Blockquote 상태에서 줄 처리
@@ -378,15 +195,8 @@ fn finalize_context(context: ParsingContext, nodes: Vec<BlockNode>) -> Vec<Block
             let node = blockquote::finalize(pending_lines, parse_block_simple);
             push_node(nodes, node)
         }
-        ParsingContext::List {
-            first_item_start,
-            items,
-            current_item_lines,
-            current_content_indent: _,
-            tight,
-            pending_blank_count: _,
-        } => {
-            let list_node = build_list_node(&first_item_start, items, current_item_lines, tight);
+        ParsingContext::List(ctx) => {
+            let list_node = ctx.build_list_node();
             push_node(nodes, list_node)
         }
         ParsingContext::CodeBlockIndented { pending_lines, pending_blank_count: _ } => {

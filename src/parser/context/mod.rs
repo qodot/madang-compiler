@@ -2,9 +2,11 @@
 //!
 //! 시작 정보(Start)와 파싱 상태(ParsingContext)를 분리하여 관리합니다.
 
+mod list_context;
 mod none_context;
 mod paragraph_context;
 
+pub use list_context::ListContext;
 pub use none_context::NoneContext;
 pub use paragraph_context::ParagraphContext;
 
@@ -16,9 +18,7 @@ pub use super::code_block_indented::{
     CodeBlockIndentedNotStartReason, CodeBlockIndentedStartReason,
 };
 pub use super::heading_setext::HeadingSetextStartReason;
-pub use super::list_item::{
-    ItemLine, ListContinueReason, ListEndReason, ListItemStart, ListItemStartReason,
-};
+pub use super::list_item::{ItemLine, ListItemStart};
 
 /// 한 줄 처리 결과: (새로 완성된 노드들, 새 컨텍스트)
 pub type LineResult = (Vec<BlockNode>, ParsingContext);
@@ -47,20 +47,7 @@ pub enum ParsingContext {
     Blockquote { pending_lines: Vec<String> },
 
     /// List 파싱 중
-    List {
-        /// 첫 아이템의 시작 정보 (리스트 타입 결정용)
-        first_item_start: ListItemStart,
-        /// 완성된 아이템들의 내용
-        items: Vec<Vec<ItemLine>>,
-        /// 현재 아이템의 줄들
-        current_item_lines: Vec<ItemLine>,
-        /// 현재 아이템의 content_indent (continuation line 판단용)
-        current_content_indent: usize,
-        /// tight 리스트 여부 (아이템 간 빈 줄 없음)
-        tight: bool,
-        /// 대기 중인 빈 줄 개수 (continuation 시 내용에 추가)
-        pending_blank_count: usize,
-    },
+    List(ListContext),
 
     /// Indented Code Block 파싱 중
     CodeBlockIndented {
