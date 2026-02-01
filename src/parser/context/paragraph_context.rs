@@ -74,21 +74,39 @@ impl ParagraphContext {
         }
 
         // List 시작이면 Paragraph 종료 후 List 시작
-        // CommonMark: List는 Paragraph를 인터럽트 가능 (단, 빈 아이템 제외)
+        // CommonMark 명세:
+        // - 빈 아이템은 Paragraph 인터럽트 불가
+        // - Ordered list는 1로 시작할 때만 Paragraph 인터럽트 가능 (Example 304-305)
         if let Ok(list_item::ListItemOk::Started(start)) = list_item::parse(line) {
-            // 빈 아이템은 Paragraph 인터럽트 불가 (CommonMark 명세)
-            if !start.content.is_empty() {
-                let text = self.pending_lines.join("\n");
-                let context = ParsingContext::List(ListContext {
-                    current_content_indent: start.content_indent,
-                    current_item_lines: vec![ItemLine::text(start.content.clone())],
-                    first_item_start: start,
-                    items: Vec::new(),
-                    tight: true,
-                    pending_blank_count: 0,
-                });
-                return (vec![paragraph::parse(&text)], context);
+            // 빈 아이템은 Paragraph 인터럽트 불가
+            if start.content.is_empty() {
+                // 줄 추가하고 계속
+                let mut pending_lines = self.pending_lines;
+                pending_lines.push(line.trim().to_string());
+                return (vec![], ParsingContext::Paragraph(ParagraphContext::new(pending_lines)));
             }
+            
+            // Ordered list는 1로 시작할 때만 Paragraph 인터럽트 가능
+            if let list_item::ListMarker::Ordered { start: num, .. } = &start.marker {
+                if *num != 1 {
+                    // 1이 아닌 숫자로 시작하면 인터럽트 불가
+                    let mut pending_lines = self.pending_lines;
+                    pending_lines.push(line.trim().to_string());
+                    return (vec![], ParsingContext::Paragraph(ParagraphContext::new(pending_lines)));
+                }
+            }
+            
+            // Paragraph 인터럽트 가능 → List 시작
+            let text = self.pending_lines.join("\n");
+            let context = ParsingContext::List(ListContext {
+                current_content_indent: start.content_indent,
+                current_item_lines: vec![ItemLine::text(start.content.clone())],
+                first_item_start: start,
+                items: Vec::new(),
+                tight: true,
+                pending_blank_count: 0,
+            });
+            return (vec![paragraph::parse(&text)], context);
         }
 
         // 줄 추가

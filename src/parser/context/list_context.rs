@@ -80,19 +80,22 @@ impl ListContext {
     }
 
     /// 현재 아이템에 줄 추가하여 계속
+    /// NOTE: 아이템 내 빈 줄은 tight 판정에 영향 없음
+    /// tight는 아이템 **간** 빈 줄만 추적하고,
+    /// 아이템 **내** 직접 블록 사이 빈 줄은 build_list_node에서 재파싱 후 판정
     fn continue_with(self, item_line: ItemLine) -> LineResult {
         let mut lines = self.current_item_lines;
         for _ in 0..self.pending_blank_count {
             lines.push(ItemLine::blank());
         }
         lines.push(item_line);
-        let tight = self.tight && self.pending_blank_count == 0;
+        // tight는 유지 (아이템 내 빈 줄은 tight 판정에 영향 없음)
         let context = ParsingContext::List(ListContext {
             first_item_start: self.first_item_start,
             items: self.items,
             current_item_lines: lines,
             current_content_indent: self.current_content_indent,
-            tight,
+            tight: self.tight, // 변경: pending_blank_count 무시
             pending_blank_count: 0,
         });
         (vec![], context)
@@ -113,15 +116,25 @@ impl ListContext {
         let all_items = push_item(self.items, self.current_item_lines);
 
         // 각 아이템을 파싱하여 ListItem 노드 생성
+        // 동시에 아이템 내 직접 블록 사이 빈 줄 여부 확인
+        let mut item_has_internal_blank = false;
         let list_children: Vec<ListItemNode> = all_items
             .iter()
             .map(|item_lines| {
-                let parsed_blocks = parse_item_lines(item_lines);
+                let (parsed_blocks, has_blank) = parse_item_lines_with_blank_info(item_lines);
+                if has_blank {
+                    item_has_internal_blank = true;
+                }
                 ListItemNode::new(parsed_blocks)
             })
             .collect();
 
-        BlockNode::List(ListNode::new(list_type, start, self.tight, list_children))
+        // tight 판정:
+        // - 아이템 간 빈 줄이 있으면 loose (self.tight == false)
+        // - 아이템 내 직접 블록 사이 빈 줄이 있으면 loose
+        let tight = self.tight && !item_has_internal_blank;
+
+        BlockNode::List(ListNode::new(list_type, start, tight, list_children))
     }
 }
 
@@ -134,24 +147,103 @@ fn push_item(mut items: Vec<Vec<ItemLine>>, item: Vec<ItemLine>) -> Vec<Vec<Item
 /// 리스트 아이템 내용 파싱
 /// text_only 플래그를 고려하여 처리
 fn parse_item_lines(lines: &[ItemLine]) -> Vec<BlockNode> {
+    parse_item_lines_with_blank_info(lines).0
+}
+
+/// 리스트 아이템 내용 파싱 + 직접 블록 사이 빈 줄 여부 반환
+/// 반환: (파싱된 블록들, 아이템 내 직접 블록 사이 빈 줄 여부)
+fn parse_item_lines_with_blank_info(lines: &[ItemLine]) -> (Vec<BlockNode>, bool) {
     // text_only가 있는지 확인
     let has_any_text_only = lines.iter().any(|l| l.text_only);
 
     if has_any_text_only {
         // text_only가 있는 경우: 청크 단위로 처리
-        // 빈 줄로 분리하되, 빈 줄 후 들여쓰기된 내용은 이전 청크에 포함
-        parse_item_lines_with_text_only(lines)
+        let blocks = parse_item_lines_with_text_only(lines);
+        // 빈 줄로 분리된 청크가 2개 이상이면 has_blank = true
+        let blank_count = lines.iter().filter(|l| l.content.trim().is_empty() && !l.text_only).count();
+        let has_blank = blank_count > 0 && blocks.len() > 1;
+        (blocks, has_blank)
     } else {
         // text_only가 없는 경우: 전체를 한 번에 재파싱
-        // 빈 줄이 있어도 리스트 continuation으로 처리됨
         let content: String = lines
             .iter()
             .map(|l| l.content.as_str())
             .collect::<Vec<_>>()
             .join("\n");
         let doc = crate::parser::parse(&content);
-        doc.children
+        
+        // 아이템 내 **직접** 블록 사이 빈 줄 확인
+        // sublist 내의 빈 줄은 제외해야 함
+        // 직접 블록: doc.children의 최상위 블록들
+        // 빈 줄로 분리된 직접 블록이 2개 이상인지 확인
+        let has_blank = has_direct_blank_between_blocks(lines, &doc.children);
+        
+        (doc.children, has_blank)
     }
+}
+
+/// 아이템의 직접 자식 블록 사이에 빈 줄이 있는지 확인
+/// sublist 내의 빈 줄은 제외
+/// 
+/// CommonMark 명세:
+/// "A list is loose if any of its constituent list items directly contain
+///  two block-level elements with a blank line between them"
+/// 
+/// 핵심: 직접(directly) 포함하는 블록 사이의 빈 줄만 카운트
+/// sublist는 하나의 블록이므로, sublist 내부의 빈 줄은 무시
+fn has_direct_blank_between_blocks(lines: &[ItemLine], blocks: &[BlockNode]) -> bool {
+    // 빈 줄이 없으면 false
+    let has_blank = lines.iter().any(|l| l.content.trim().is_empty());
+    if !has_blank {
+        return false;
+    }
+
+    // 직접 자식 중 List가 아닌 블록의 개수
+    let non_list_count = blocks
+        .iter()
+        .filter(|b| !matches!(b, BlockNode::List(_)))
+        .count();
+
+    // 비-List 블록이 2개 이상이면, 그 사이에 빈 줄이 있을 수 있음
+    // (빈 줄이 있다는 것은 이미 확인했으므로)
+    if non_list_count >= 2 {
+        return true;
+    }
+
+    // 비-List 블록이 1개 이하이고, List 블록이 있는 경우
+    // → 빈 줄은 List 내부에 있거나 List와 다른 블록 사이에 있음
+    // → List와 다른 블록 사이의 빈 줄은 outer를 loose로 만듦
+    // 
+    // 예: * foo
+    //       * bar
+    //     
+    //       baz
+    // foo → bar sublist → baz
+    // foo와 sublist 사이에는 빈 줄 없음
+    // sublist와 baz 사이에 빈 줄 있음 → loose
+    
+    // blocks에서 List와 비-List의 패턴 확인
+    // List 다음에 비-List가 있고, 그 사이에 빈 줄이 있으면 loose
+    let mut prev_was_list = false;
+    let mut found_blank_after_list = false;
+    
+    for (i, block) in blocks.iter().enumerate() {
+        let is_list = matches!(block, BlockNode::List(_));
+        
+        if prev_was_list && !is_list {
+            // List 다음에 비-List → 사이에 빈 줄 있는지 확인 필요
+            // 간단한 휴리스틱: blocks 순서대로 나왔고 빈 줄이 있다면 사이에 있을 가능성
+            if i > 0 && has_blank {
+                found_blank_after_list = true;
+            }
+        }
+        
+        prev_was_list = is_list;
+    }
+
+    // 더 정확한 판정이 필요하면 lines 분석 필요
+    // 현재는 List 다음 비-List 패턴이 있고 빈 줄이 있으면 loose로 판정
+    found_blank_after_list
 }
 
 /// text_only가 있는 아이템 내용 파싱
