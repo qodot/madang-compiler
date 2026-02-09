@@ -11,6 +11,7 @@ pub use none_context::NoneContext;
 pub use paragraph_context::ParagraphContext;
 
 use crate::node::BlockNode;
+use crate::parser::html_block::HtmlBlockType;
 
 // 각 파서 모듈에서 타입 re-export
 pub use super::code_block_fenced::CodeBlockFencedStart;
@@ -55,5 +56,13 @@ pub enum ParsingContext {
         pending_lines: Vec<String>,
         /// 대기 중인 빈 줄 개수 (다음 코드 줄이 오면 내용에 추가)
         pending_blank_count: usize,
+    },
+
+    /// HTML Block 파싱 중
+    HtmlBlock {
+        /// HTML block 타입 (1-7)
+        block_type: HtmlBlockType,
+        /// 축적된 줄
+        pending_lines: Vec<String>,
     },
 }

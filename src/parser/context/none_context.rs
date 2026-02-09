@@ -6,6 +6,7 @@ use super::{
 };
 use crate::parser::code_block_fenced::{parse as parse_code_block_fenced, CodeBlockFencedOk};
 use crate::parser::code_block_indented::try_start as try_start_code_block_indented;
+use crate::parser::html_block;
 use crate::parser::{blockquote, heading, list_item, thematic_break};
 
 #[derive(Debug, Clone, Default)]
@@ -35,6 +36,20 @@ impl NoneContext {
                 start,
                 content: Vec::new(),
             };
+            return (vec![], context);
+        }
+
+        // HTML Block 시작 감지
+        if let Some(block_type) = html_block::detect_start(line) {
+            let context = ParsingContext::HtmlBlock {
+                block_type,
+                pending_lines: vec![line.to_string()],
+            };
+            // Type 1-5: check if end condition is on the same line
+            if html_block::check_end(line, block_type) {
+                let node = html_block::finalize(vec![line.to_string()]);
+                return (vec![node], ParsingContext::None(NoneContext));
+            }
             return (vec![], context);
         }
 

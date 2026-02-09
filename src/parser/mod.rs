@@ -10,6 +10,7 @@ mod context;
 mod heading;
 mod heading_setext;
 mod helpers;
+mod html_block;
 mod list;
 mod list_item;
 mod paragraph;
@@ -22,6 +23,7 @@ use context::{
     CodeBlockFencedStart, CodeBlockIndentedStartReason, LineResult, NoneContext, ParsingContext,
 };
 use helpers::trim_blank_lines;
+use html_block::HtmlBlockType;
 
 /// 파서 상태: (완성된 노드들, 현재 컨텍스트) - fold 누적용
 type ParserState = (Vec<BlockNode>, ParsingContext);
@@ -58,6 +60,9 @@ fn process_line(line: &str, context: ParsingContext, nodes: Vec<BlockNode>) -> P
         ParsingContext::List(ctx) => ctx.parse(line),
         ParsingContext::CodeBlockIndented { pending_lines, pending_blank_count } => {
             process_line_in_code_block_indented(line, pending_lines, pending_blank_count)
+        }
+        ParsingContext::HtmlBlock { block_type, pending_lines } => {
+            process_line_in_html_block(line, block_type, pending_lines)
         }
     };
 
@@ -137,6 +142,52 @@ fn process_line_in_code_block_indented(
     }
 }
 
+/// HTML Block 상태에서 줄 처리
+fn process_line_in_html_block(
+    current_line: &str,
+    block_type: HtmlBlockType,
+    pending_lines: Vec<String>,
+) -> LineResult {
+    match block_type {
+        // Type 1-5: end on specific end condition
+        HtmlBlockType::Type1
+        | HtmlBlockType::Type2
+        | HtmlBlockType::Type3
+        | HtmlBlockType::Type4
+        | HtmlBlockType::Type5 => {
+            let pending_lines = push_string(pending_lines, current_line.to_string());
+            if html_block::check_end(current_line, block_type) {
+                let node = html_block::finalize(pending_lines);
+                (vec![node], ParsingContext::None(NoneContext))
+            } else {
+                (
+                    vec![],
+                    ParsingContext::HtmlBlock {
+                        block_type,
+                        pending_lines,
+                    },
+                )
+            }
+        }
+        // Type 6-7: end on blank line
+        HtmlBlockType::Type6 | HtmlBlockType::Type7 => {
+            if current_line.trim().is_empty() {
+                let node = html_block::finalize(pending_lines);
+                (vec![node], ParsingContext::None(NoneContext))
+            } else {
+                let pending_lines = push_string(pending_lines, current_line.to_string());
+                (
+                    vec![],
+                    ParsingContext::HtmlBlock {
+                        block_type,
+                        pending_lines,
+                    },
+                )
+            }
+        }
+    }
+}
+
 /// Blockquote 상태에서 줄 처리
 /// 반환: (새로 완성된 노드들, 새 컨텍스트)
 fn process_line_in_blockquote(current_line: &str, pending_lines: Vec<String>) -> LineResult {
@@ -156,6 +207,22 @@ fn process_line_in_blockquote(current_line: &str, pending_lines: Vec<String>) ->
             content: Vec::new(),
         };
         return (vec![node], context);
+    }
+
+    // HTML Block 시작이면 Blockquote 종료
+    if let Some(block_type) = html_block::detect_start(current_line) {
+        if html_block::can_interrupt_paragraph(block_type) {
+            let bq_node = blockquote::finalize(pending_lines, parse_block_simple);
+            if html_block::check_end(current_line, block_type) {
+                let html_node = html_block::finalize(vec![current_line.to_string()]);
+                return (vec![bq_node, html_node], ParsingContext::None(NoneContext));
+            }
+            let context = ParsingContext::HtmlBlock {
+                block_type,
+                pending_lines: vec![current_line.to_string()],
+            };
+            return (vec![bq_node], context);
+        }
     }
 
     // Thematic Break이면 Blockquote 종료
@@ -204,6 +271,10 @@ fn finalize_context(context: ParsingContext, nodes: Vec<BlockNode>) -> Vec<Block
             let node = BlockNode::CodeBlock(CodeBlockNode::new(None, content));
             push_node(nodes, node)
         }
+        ParsingContext::HtmlBlock { block_type: _, pending_lines } => {
+            let node = html_block::finalize(pending_lines);
+            push_node(nodes, node)
+        }
     }
 }
 
@@ -236,6 +307,11 @@ fn parse_block_simple(block: &str) -> BlockNode {
 
     if let Ok(node) = heading::parse(block) {
         return node;
+    }
+
+    // HTML block detection for simple block parsing
+    if let Some(_block_type) = html_block::detect_start(block) {
+        return html_block::finalize(vec![block.to_string()]);
     }
 
     paragraph::parse(block.trim())
