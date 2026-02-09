@@ -134,4 +134,31 @@ mod tests {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
     }
+
+    // =========================================================================
+    // 미구현 기능으로 인해 ignore 처리된 테스트
+    // =========================================================================
+
+    #[rstest]
+    // Example 176: HTML block inside blockquote (blockquote 내 HTML block 감지 미구현)
+    #[case(
+        "> <div>\n> foo\n\nbar",
+        vec![
+            BlockNode::blockquote(vec![BlockNode::html_block("<div>\nfoo")]),
+            BlockNode::paragraph(vec![InlineNode::text("bar")]),
+        ]
+    )]
+    // Example 177: HTML block in list (list 내 HTML block 감지 미구현)
+    #[case(
+        "- <div>\n- foo",
+        vec![
+            BlockNode::bullet_list(true, vec![
+                crate::node::ListItemNode::new(vec![BlockNode::html_block("<div>")]),
+                crate::node::ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])]),
+            ]),
+        ]
+    )]
+    #[ignore = "container block 내부 HTML block 감지 미구현"]
+    fn test_html_block_type1_pending(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
+    }
 }
