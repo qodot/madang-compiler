@@ -149,33 +149,13 @@ fn process_line_in_html_block(
     pending_lines: Vec<String>,
 ) -> LineResult {
     match block_type {
-        // Type 1-5: end on specific end condition
-        HtmlBlockType::Type1
-        | HtmlBlockType::Type2
-        | HtmlBlockType::Type3
-        | HtmlBlockType::Type4
-        | HtmlBlockType::Type5 => {
+        // Type 1: end on specific end condition (</pre>, </script>, </style>, </textarea>)
+        HtmlBlockType::Type1 => {
             let pending_lines = push_string(pending_lines, current_line.to_string());
             if html_block::check_end(current_line, block_type) {
                 let node = html_block::finalize(pending_lines);
                 (vec![node], ParsingContext::None(NoneContext))
             } else {
-                (
-                    vec![],
-                    ParsingContext::HtmlBlock {
-                        block_type,
-                        pending_lines,
-                    },
-                )
-            }
-        }
-        // Type 6-7: end on blank line
-        HtmlBlockType::Type6 | HtmlBlockType::Type7 => {
-            if current_line.trim().is_empty() {
-                let node = html_block::finalize(pending_lines);
-                (vec![node], ParsingContext::None(NoneContext))
-            } else {
-                let pending_lines = push_string(pending_lines, current_line.to_string());
                 (
                     vec![],
                     ParsingContext::HtmlBlock {

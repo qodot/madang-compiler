@@ -120,22 +120,6 @@ impl HtmlBlockNode {
     }
 }
 
-/// HTML Block 노드
-#[derive(Debug, Clone, PartialEq)]
-pub struct HtmlBlockNode {
-    pub content: String,
-}
-
-impl Node for HtmlBlockNode {}
-
-impl HtmlBlockNode {
-    pub fn new(content: &str) -> Self {
-        Self {
-            content: content.to_string(),
-        }
-    }
-}
-
 /// Paragraph 노드
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParagraphNode {
