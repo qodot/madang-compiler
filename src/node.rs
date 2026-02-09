@@ -104,6 +104,22 @@ impl CodeBlockNode {
     }
 }
 
+/// HTML Block 노드 (raw HTML)
+#[derive(Debug, Clone, PartialEq)]
+pub struct HtmlBlockNode {
+    pub content: String,
+}
+
+impl Node for HtmlBlockNode {}
+
+impl HtmlBlockNode {
+    pub fn new(content: &str) -> Self {
+        Self {
+            content: content.to_string(),
+        }
+    }
+}
+
 /// Paragraph 노드
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParagraphNode {
@@ -221,6 +237,7 @@ pub enum BlockNode {
     ThematicBreak(ThematicBreakNode),
     Heading(HeadingNode),
     CodeBlock(CodeBlockNode),
+    HtmlBlock(HtmlBlockNode),
     Paragraph(ParagraphNode),
     Blockquote(BlockquoteNode),
     List(ListNode),
@@ -239,6 +256,11 @@ impl BlockNode {
     #[cfg(test)]
     pub fn heading(level: u8, children: Vec<InlineNode>) -> Self {
         BlockNode::Heading(HeadingNode::new(level, children))
+    }
+
+    #[cfg(test)]
+    pub fn html_block(content: &str) -> Self {
+        BlockNode::HtmlBlock(HtmlBlockNode::new(content))
     }
 
     #[cfg(test)]

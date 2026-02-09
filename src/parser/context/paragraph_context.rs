@@ -5,6 +5,7 @@ use super::{
 };
 use crate::node::{HeadingNode, InlineNode, TextNode};
 use crate::parser::code_block_fenced::{parse as parse_code_block_fenced, CodeBlockFencedOk};
+use crate::parser::html_block;
 use crate::parser::{blockquote, heading, list_item, paragraph, thematic_break};
 use crate::parser::heading_setext::try_start as try_start_heading_setext;
 use crate::parser::helpers::calculate_indent;
@@ -62,6 +63,23 @@ impl ParagraphContext {
         if let Ok(node) = heading::parse(line) {
             let text = self.pending_lines.join("\n");
             return (vec![paragraph::parse(&text), node], ParsingContext::None(NoneContext));
+        }
+
+        // HTML Block 시작이면 (type 1-6만) Paragraph 종료 후 HTML Block 시작
+        if let Some(block_type) = html_block::detect_start(line) {
+            if html_block::can_interrupt_paragraph(block_type) {
+                let text = self.pending_lines.join("\n");
+                // Check if end condition met on same line
+                if html_block::check_end(line, block_type) {
+                    let node = html_block::finalize(vec![line.to_string()]);
+                    return (vec![paragraph::parse(&text), node], ParsingContext::None(NoneContext));
+                }
+                let context = ParsingContext::HtmlBlock {
+                    block_type,
+                    pending_lines: vec![line.to_string()],
+                };
+                return (vec![paragraph::parse(&text)], context);
+            }
         }
 
         // Blockquote 시작이면 Paragraph 종료 후 Blockquote 시작
