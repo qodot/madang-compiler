@@ -202,10 +202,16 @@ mod tests {
     #[rstest]
     // Example 128: blockquote 내부 닫히지 않은 코드 블록
     #[case("> ```\n> aaa\n\nbbb", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "aaa")]), BlockNode::paragraph(vec![InlineNode::text("bbb")])])]
+    #[ignore = "blockquote 내 코드 블록 미지원"]
+    fn test_fenced_code_block_pending(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse(input);
+        assert_eq!(doc.children, expected);
+    }
+
+    #[rstest]
     // Example 141: setext heading + code block + heading
     #[case("foo\n---\n~~~\nbar\n~~~\n# baz", vec![BlockNode::heading(2, vec![InlineNode::text("foo")]), BlockNode::code_block(None, "bar"), BlockNode::heading(1, vec![InlineNode::text("baz")])])]
-    #[ignore = "setext heading 또는 blockquote 내 코드 블록 미지원"]
-    fn test_fenced_code_block_pending(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+    fn test_fenced_code_block_with_setext(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
     }
