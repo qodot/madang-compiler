@@ -77,12 +77,12 @@ mod tests {
     use rstest::rstest;
 
     // =========================================================================
-    // HTML Block Type 1 — Examples 171-180
+    // HTML Block Type 1 — Examples 169-178
     // https://spec.commonmark.org/0.31.2/#html-blocks
     // =========================================================================
 
     #[rstest]
-    // Example 171: Type 1 (pre) with blank lines inside
+    // Example 169: Type 1 (pre) with blank lines inside
     #[case(
         "<pre language=\"haskell\"><code>\nimport Text.HTML.TagSoup\n\nmain :: IO ()\nmain = print $ parseTags tags\n</code></pre>\nokay",
         vec![
@@ -90,7 +90,7 @@ mod tests {
             BlockNode::paragraph(vec![InlineNode::text("okay")]),
         ]
     )]
-    // Example 172: Type 1 (script) with blank lines inside
+    // Example 170: Type 1 (script) with blank lines inside
     #[case(
         "<script type=\"text/javascript\">\n// JavaScript example\n\ndocument.getElementById(\"demo\").innerHTML = \"Hello JavaScript!\";\n</script>\nokay",
         vec![
@@ -98,12 +98,12 @@ mod tests {
             BlockNode::paragraph(vec![InlineNode::text("okay")]),
         ]
     )]
-    // Example 173: Type 1 (textarea) with blank lines
+    // Example 171: Type 1 (textarea) with blank lines
     #[case(
         "<textarea>\n\n*foo*\n\n_bar_\n\n</textarea>",
         vec![BlockNode::html_block("<textarea>\n\n*foo*\n\n_bar_\n\n</textarea>")]
     )]
-    // Example 174: Type 1 (style) with blank lines
+    // Example 172: Type 1 (style) with blank lines
     #[case(
         "<style\n  type=\"text/css\">\nh1 {color:red;}\n\np {color:blue;}\n</style>\nokay",
         vec![
@@ -111,12 +111,12 @@ mod tests {
             BlockNode::paragraph(vec![InlineNode::text("okay")]),
         ]
     )]
-    // Example 175: Type 1 (style) no end tag → ends at document end
+    // Example 173: Type 1 (style) no end tag → ends at document end
     #[case(
         "<style\n  type=\"text/css\">\n\nfoo",
         vec![BlockNode::html_block("<style\n  type=\"text/css\">\n\nfoo")]
     )]
-    // Example 178: Type 1 (style) end tag on same line
+    // Example 176: Type 1 (style) end tag on same line
     #[case(
         "<style>p{color:red;}</style>\n*foo*",
         vec![
@@ -124,8 +124,8 @@ mod tests {
             BlockNode::paragraph(vec![InlineNode::text("*foo*")]),
         ]
     )]
-    // Example 179: Type 2 (comment) — skip, not Type 1
-    // Example 180: Type 1 (script) content after end tag stays in block
+    // Example 177: Type 2 (comment) — skip, not Type 1
+    // Example 178: Type 1 (script) content after end tag stays in block
     #[case(
         "<script>\nfoo\n</script>1. *bar*",
         vec![BlockNode::html_block("<script>\nfoo\n</script>1. *bar*")]
@@ -140,7 +140,7 @@ mod tests {
     // =========================================================================
 
     #[rstest]
-    // Example 176: HTML block inside blockquote (blockquote 내 HTML block 감지 미구현)
+    // Example 174: HTML block inside blockquote (blockquote 내 HTML block 감지 미구현)
     #[case(
         "> <div>\n> foo\n\nbar",
         vec![
@@ -148,7 +148,7 @@ mod tests {
             BlockNode::paragraph(vec![InlineNode::text("bar")]),
         ]
     )]
-    // Example 177: HTML block in list (list 내 HTML block 감지 미구현)
+    // Example 175: HTML block in list (list 내 HTML block 감지 미구현)
     #[case(
         "- <div>\n- foo",
         vec![
