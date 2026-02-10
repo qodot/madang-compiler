@@ -19,12 +19,14 @@ pub enum HtmlBlockType {
     Type5,
     /// Type 6: 특정 태그 목록 (div, table 등) — 빈 줄로 종료
     Type6,
+    /// Type 7: 기타 완전한 태그 — 빈 줄로 종료, paragraph interrupt 불가
+    Type7,
 }
 
 impl HtmlBlockType {
     /// 빈 줄로 종료되는 타입인지 (Type 6, 7)
     pub fn ends_on_blank_line(self) -> bool {
-        matches!(self, HtmlBlockType::Type6)
+        matches!(self, HtmlBlockType::Type6 | HtmlBlockType::Type7)
     }
 }
 
@@ -101,6 +103,11 @@ fn parse_start(line: &str) -> Result<HtmlBlockOk, HtmlBlockErr> {
         return Ok(HtmlBlockOk::Start(HtmlBlockType::Type6));
     }
 
+    // Type 7: 완전한 여는/닫는 태그가 줄에 단독으로 있음
+    if is_complete_tag_line(trimmed) {
+        return Ok(HtmlBlockOk::Start(HtmlBlockType::Type7));
+    }
+
     Err(HtmlBlockErr::NotHtmlBlock)
 }
 
@@ -166,6 +173,165 @@ fn starts_with_tag_type6(trimmed: &str) -> bool {
     false
 }
 
+/// Type 7: 완전한 여는 태그 또는 닫는 태그가 줄에 단독으로 있는지
+/// 여는 태그: <tagname (attributes)* /? > (whitespace)* EOL
+/// 닫는 태그: </tagname (whitespace)* > (whitespace)* EOL
+fn is_complete_tag_line(trimmed: &str) -> bool {
+    if !trimmed.starts_with('<') {
+        return false;
+    }
+
+    // 닫는 태그: </tagname>
+    if trimmed.starts_with("</") {
+        return is_closing_tag_line(&trimmed[2..]);
+    }
+
+    // 여는 태그: <tagname ...>
+    is_opening_tag_line(&trimmed[1..])
+}
+
+/// 닫는 태그 판정: tagname (whitespace)* > (whitespace)* EOL
+fn is_closing_tag_line(after_slash: &str) -> bool {
+    let mut chars = after_slash.chars().peekable();
+
+    // tag name: ASCII letter로 시작
+    match chars.peek() {
+        Some(c) if c.is_ascii_alphabetic() => { chars.next(); }
+        _ => return false,
+    }
+    // tag name 나머지: ASCII alphanumeric or -
+    while let Some(&c) = chars.peek() {
+        if c.is_ascii_alphanumeric() || c == '-' {
+            chars.next();
+        } else {
+            break;
+        }
+    }
+    // optional whitespace
+    while let Some(&c) = chars.peek() {
+        if c == ' ' || c == '\t' {
+            chars.next();
+        } else {
+            break;
+        }
+    }
+    // >
+    if chars.next() != Some('>') {
+        return false;
+    }
+    // 나머지는 whitespace만
+    chars.all(|c| c == ' ' || c == '\t')
+}
+
+/// 여는 태그 판정: tagname (attribute)* /? > (whitespace)* EOL
+fn is_opening_tag_line(after_lt: &str) -> bool {
+    let mut chars = after_lt.chars().peekable();
+
+    // tag name: ASCII letter로 시작
+    match chars.peek() {
+        Some(c) if c.is_ascii_alphabetic() => { chars.next(); }
+        _ => return false,
+    }
+    // tag name 나머지: ASCII alphanumeric or -
+    while let Some(&c) = chars.peek() {
+        if c.is_ascii_alphanumeric() || c == '-' {
+            chars.next();
+        } else {
+            break;
+        }
+    }
+
+    // attributes: (whitespace+ attribute-name (= attribute-value)?)*
+    loop {
+        // whitespace 필요
+        let mut has_ws = false;
+        while let Some(&c) = chars.peek() {
+            if c == ' ' || c == '\t' {
+                chars.next();
+                has_ws = true;
+            } else {
+                break;
+            }
+        }
+
+        match chars.peek() {
+            Some(&'>') => {
+                chars.next();
+                return chars.all(|c| c == ' ' || c == '\t');
+            }
+            Some(&'/') => {
+                chars.next();
+                if chars.next() != Some('>') {
+                    return false;
+                }
+                return chars.all(|c| c == ' ' || c == '\t');
+            }
+            _ => {}
+        }
+
+        if !has_ws {
+            return false;
+        }
+
+        // attribute name: ASCII letter, _, or :로 시작
+        match chars.peek() {
+            Some(c) if c.is_ascii_alphabetic() || *c == '_' || *c == ':' => { chars.next(); }
+            _ => return false,
+        }
+        // attribute name 나머지
+        while let Some(&c) = chars.peek() {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == ':' || c == '-' {
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        // optional = value
+        // whitespace around =
+        let save = chars.clone();
+        let mut temp = chars.clone();
+        while let Some(&c) = temp.peek() {
+            if c == ' ' || c == '\t' { temp.next(); } else { break; }
+        }
+        if temp.peek() == Some(&'=') {
+            temp.next();
+            while let Some(&c) = temp.peek() {
+                if c == ' ' || c == '\t' { temp.next(); } else { break; }
+            }
+            // attribute value
+            match temp.peek() {
+                Some(&'"') => {
+                    temp.next();
+                    while let Some(c) = temp.next() {
+                        if c == '"' { break; }
+                    }
+                }
+                Some(&'\'') => {
+                    temp.next();
+                    while let Some(c) = temp.next() {
+                        if c == '\'' { break; }
+                    }
+                }
+                Some(_) => {
+                    // unquoted: no spaces, quotes, =, <, >, `
+                    while let Some(&c) = temp.peek() {
+                        if c != ' ' && c != '\t' && c != '"' && c != '\'' && c != '=' && c != '<' && c != '>' && c != '`' {
+                            temp.next();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                None => return false,
+            }
+            chars = temp;
+        } else {
+            chars = save;
+        }
+    }
+}
+
 /// 종료 조건 체크 (내부용)
 fn check_end(line: &str, block_type: HtmlBlockType) -> bool {
     let lower = line.to_ascii_lowercase();
@@ -180,7 +346,7 @@ fn check_end(line: &str, block_type: HtmlBlockType) -> bool {
         HtmlBlockType::Type3 => line.contains("?>"),
         HtmlBlockType::Type4 => line.contains('>'),
         HtmlBlockType::Type5 => line.contains("]]>"),
-        HtmlBlockType::Type6 => line.trim().is_empty(),
+        HtmlBlockType::Type6 | HtmlBlockType::Type7 => line.trim().is_empty(),
     }
 }
 
@@ -194,6 +360,7 @@ pub fn finalize(lines: Vec<String>) -> BlockNode {
 pub fn can_interrupt_paragraph(block_type: HtmlBlockType) -> bool {
     match block_type {
         HtmlBlockType::Type1 | HtmlBlockType::Type2 | HtmlBlockType::Type3 | HtmlBlockType::Type4 | HtmlBlockType::Type5 | HtmlBlockType::Type6 => true,
+        HtmlBlockType::Type7 => false,
     }
 }
 
@@ -432,6 +599,56 @@ mod tests {
         vec![BlockNode::html_block("<div></div>\n``` c\nint x = 33;\n```")]
     )]
     fn test_html_block_type6(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse(input);
+        assert_eq!(doc.children, expected);
+    }
+
+    // =========================================================================
+    // HTML Block Type 7 — Examples 162-168
+    // https://spec.commonmark.org/0.31.2/#html-blocks
+    // =========================================================================
+
+    #[rstest]
+    // Example 162: <a> tag (not in Type 6 list), no blank line → ends at doc end
+    #[case(
+        "<a href=\"foo\">\n*bar*\n</a>",
+        vec![BlockNode::html_block("<a href=\"foo\">\n*bar*\n</a>")]
+    )]
+    // Example 163: custom tag <Warning>
+    #[case(
+        "<Warning>\n*bar*\n</Warning>",
+        vec![BlockNode::html_block("<Warning>\n*bar*\n</Warning>")]
+    )]
+    // Example 164: <i> tag
+    #[case(
+        "<i class=\"foo\">\n*bar*\n</i>",
+        vec![BlockNode::html_block("<i class=\"foo\">\n*bar*\n</i>")]
+    )]
+    // Example 165: </ins> closing tag
+    #[case(
+        "</ins>\n*bar*",
+        vec![BlockNode::html_block("</ins>\n*bar*")]
+    )]
+    // Example 166: <del> no blank line
+    #[case(
+        "<del>\n*foo*\n</del>",
+        vec![BlockNode::html_block("<del>\n*foo*\n</del>")]
+    )]
+    // Example 167: <del> with blank line → splits
+    #[case(
+        "<del>\n\n*foo*\n\n</del>",
+        vec![
+            BlockNode::html_block("<del>"),
+            BlockNode::paragraph(vec![InlineNode::text("*foo*")]),
+            BlockNode::html_block("</del>"),
+        ]
+    )]
+    // Example 168: <del>*foo*</del> — tag not alone on line → NOT Type 7, treated as paragraph
+    #[case(
+        "<del>*foo*</del>",
+        vec![BlockNode::paragraph(vec![InlineNode::text("<del>*foo*</del>")])]
+    )]
+    fn test_html_block_type7(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
     }
