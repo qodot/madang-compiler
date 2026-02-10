@@ -9,6 +9,8 @@ use crate::node::{BlockNode, HtmlBlockNode};
 pub enum HtmlBlockType {
     /// Type 1: pre, script, style, textarea
     Type1,
+    /// Type 2: <!-- ... -->
+    Type2,
 }
 
 /// HTML block 시작 조건 감지 (0~3칸 들여쓰기 허용)
@@ -26,6 +28,11 @@ pub fn detect_start(line: &str) -> Option<HtmlBlockType> {
         if starts_with_tag_type1(trimmed, tag) {
             return Some(HtmlBlockType::Type1);
         }
+    }
+
+    // Type 2: <!--
+    if trimmed.starts_with("<!--") {
+        return Some(HtmlBlockType::Type2);
     }
 
     None
@@ -54,6 +61,7 @@ pub fn check_end(line: &str, block_type: HtmlBlockType) -> bool {
                 || lower.contains("</style>")
                 || lower.contains("</textarea>")
         }
+        HtmlBlockType::Type2 => line.contains("-->"),
     }
 }
 
@@ -66,7 +74,7 @@ pub fn finalize(lines: Vec<String>) -> BlockNode {
 /// HTML block이 paragraph를 interrupt할 수 있는지
 pub fn can_interrupt_paragraph(block_type: HtmlBlockType) -> bool {
     match block_type {
-        HtmlBlockType::Type1 => true,
+        HtmlBlockType::Type1 | HtmlBlockType::Type2 => true,
     }
 }
 
@@ -124,13 +132,47 @@ mod tests {
             BlockNode::paragraph(vec![InlineNode::text("*foo*")]),
         ]
     )]
-    // Example 177: Type 2 (comment) — skip, not Type 1
     // Example 178: Type 1 (script) content after end tag stays in block
     #[case(
         "<script>\nfoo\n</script>1. *bar*",
         vec![BlockNode::html_block("<script>\nfoo\n</script>1. *bar*")]
     )]
     fn test_html_block_type1(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse(input);
+        assert_eq!(doc.children, expected);
+    }
+
+    // =========================================================================
+    // HTML Block Type 2 — Examples 177, 179, 183
+    // https://spec.commonmark.org/0.31.2/#html-blocks
+    // =========================================================================
+
+    #[rstest]
+    // Example 177: comment on same line, content after --> stays in block
+    #[case(
+        "<!-- foo -->*bar*\n*baz*",
+        vec![
+            BlockNode::html_block("<!-- foo -->*bar*"),
+            BlockNode::paragraph(vec![InlineNode::text("*baz*")]),
+        ]
+    )]
+    // Example 179: multi-line comment with blank lines
+    #[case(
+        "<!-- Foo\n\nbar\n   baz -->\nokay",
+        vec![
+            BlockNode::html_block("<!-- Foo\n\nbar\n   baz -->"),
+            BlockNode::paragraph(vec![InlineNode::text("okay")]),
+        ]
+    )]
+    // Example 183: 0-3 spaces indent OK, 4 spaces = code block
+    #[case(
+        "  <!-- foo -->\n\n    <!-- foo -->",
+        vec![
+            BlockNode::html_block("  <!-- foo -->"),
+            BlockNode::code_block(None, "<!-- foo -->"),
+        ]
+    )]
+    fn test_html_block_type2(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
     }

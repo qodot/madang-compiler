@@ -148,23 +148,18 @@ fn process_line_in_html_block(
     block_type: HtmlBlockType,
     pending_lines: Vec<String>,
 ) -> LineResult {
-    match block_type {
-        // Type 1: end on specific end condition (</pre>, </script>, </style>, </textarea>)
-        HtmlBlockType::Type1 => {
-            let pending_lines = push_string(pending_lines, current_line.to_string());
-            if html_block::check_end(current_line, block_type) {
-                let node = html_block::finalize(pending_lines);
-                (vec![node], ParsingContext::None(NoneContext))
-            } else {
-                (
-                    vec![],
-                    ParsingContext::HtmlBlock {
-                        block_type,
-                        pending_lines,
-                    },
-                )
-            }
-        }
+    let pending_lines = push_string(pending_lines, current_line.to_string());
+    if html_block::check_end(current_line, block_type) {
+        let node = html_block::finalize(pending_lines);
+        (vec![node], ParsingContext::None(NoneContext))
+    } else {
+        (
+            vec![],
+            ParsingContext::HtmlBlock {
+                block_type,
+                pending_lines,
+            },
+        )
     }
 }
 
