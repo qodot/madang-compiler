@@ -13,6 +13,8 @@ pub enum HtmlBlockType {
     Type2,
     /// Type 3: <? ... ?>
     Type3,
+    /// Type 4: <! + 대문자 ... >
+    Type4,
 }
 
 /// HTML block 파싱 성공 결과
@@ -71,6 +73,13 @@ fn parse_start(line: &str) -> Result<HtmlBlockOk, HtmlBlockErr> {
         return Ok(HtmlBlockOk::Start(HtmlBlockType::Type3));
     }
 
+    // Type 4: <! + ASCII uppercase letter
+    if trimmed.starts_with("<!")
+        && trimmed.as_bytes().get(2).map_or(false, |b| b.is_ascii_uppercase())
+    {
+        return Ok(HtmlBlockOk::Start(HtmlBlockType::Type4));
+    }
+
     Err(HtmlBlockErr::NotHtmlBlock)
 }
 
@@ -107,6 +116,7 @@ fn check_end(line: &str, block_type: HtmlBlockType) -> bool {
         }
         HtmlBlockType::Type2 => line.contains("-->"),
         HtmlBlockType::Type3 => line.contains("?>"),
+        HtmlBlockType::Type4 => line.contains('>'),
     }
 }
 
@@ -119,7 +129,7 @@ pub fn finalize(lines: Vec<String>) -> BlockNode {
 /// HTML block이 paragraph를 interrupt할 수 있는지
 pub fn can_interrupt_paragraph(block_type: HtmlBlockType) -> bool {
     match block_type {
-        HtmlBlockType::Type1 | HtmlBlockType::Type2 | HtmlBlockType::Type3 => true,
+        HtmlBlockType::Type1 | HtmlBlockType::Type2 | HtmlBlockType::Type3 | HtmlBlockType::Type4 => true,
     }
 }
 
@@ -237,6 +247,22 @@ mod tests {
         ]
     )]
     fn test_html_block_type3(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse(input);
+        assert_eq!(doc.children, expected);
+    }
+
+    // =========================================================================
+    // HTML Block Type 4 — Example 181
+    // https://spec.commonmark.org/0.31.2/#html-blocks
+    // =========================================================================
+
+    #[rstest]
+    // Example 181: <!DOCTYPE html> declaration
+    #[case(
+        "<!DOCTYPE html>",
+        vec![BlockNode::html_block("<!DOCTYPE html>")]
+    )]
+    fn test_html_block_type4(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
     }
