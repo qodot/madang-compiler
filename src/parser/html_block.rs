@@ -13,29 +13,66 @@ pub enum HtmlBlockType {
     Type2,
 }
 
-/// HTML block 시작 조건 감지 (0~3칸 들여쓰기 허용)
-/// 반환: Some(HtmlBlockType) if 시작 조건 충족
-pub fn detect_start(line: &str) -> Option<HtmlBlockType> {
+/// HTML block 파싱 성공 결과
+#[derive(Debug, PartialEq)]
+pub enum HtmlBlockOk {
+    /// 시작 줄
+    Start(HtmlBlockType),
+    /// 내용 줄 (종료 조건 미충족)
+    Content,
+    /// 종료 줄 (종료 조건 충족)
+    End,
+}
+
+/// HTML block 파싱 실패 사유
+#[derive(Debug, PartialEq)]
+pub enum HtmlBlockErr {
+    /// 4칸 이상 들여쓰기 (코드 블록으로 해석됨)
+    CodeBlockIndented,
+    /// HTML block 시작 조건에 해당하지 않음
+    NotHtmlBlock,
+}
+
+/// HTML block 파싱
+///
+/// - `block_type`이 None이면 시작 조건 감지
+/// - `block_type`이 Some이면 계속/종료 판단
+pub fn parse(line: &str, block_type: Option<HtmlBlockType>) -> Result<HtmlBlockOk, HtmlBlockErr> {
+    match block_type {
+        None => parse_start(line),
+        Some(bt) => Ok(parse_continue(line, bt)),
+    }
+}
+
+fn parse_start(line: &str) -> Result<HtmlBlockOk, HtmlBlockErr> {
     let trimmed = line.trim_start();
     let indent = line.len() - trimmed.len();
     if indent > 3 {
-        return None;
+        return Err(HtmlBlockErr::CodeBlockIndented);
     }
 
     // Type 1: <pre, <script, <style, <textarea (case-insensitive)
     // followed by space, tab, >, or end of line
     for tag in &["pre", "script", "style", "textarea"] {
         if starts_with_tag_type1(trimmed, tag) {
-            return Some(HtmlBlockType::Type1);
+            return Ok(HtmlBlockOk::Start(HtmlBlockType::Type1));
         }
     }
 
     // Type 2: <!--
     if trimmed.starts_with("<!--") {
-        return Some(HtmlBlockType::Type2);
+        return Ok(HtmlBlockOk::Start(HtmlBlockType::Type2));
     }
 
-    None
+    Err(HtmlBlockErr::NotHtmlBlock)
+}
+
+fn parse_continue(line: &str, block_type: HtmlBlockType) -> HtmlBlockOk {
+    if check_end(line, block_type) {
+        HtmlBlockOk::End
+    } else {
+        HtmlBlockOk::Content
+    }
 }
 
 /// Type 1 시작 조건: <tagname 뒤에 space, tab, >, or end of line
@@ -51,8 +88,8 @@ fn starts_with_tag_type1(trimmed: &str, tag: &str) -> bool {
         || rest.starts_with('>')
 }
 
-/// 종료 조건 체크
-pub fn check_end(line: &str, block_type: HtmlBlockType) -> bool {
+/// 종료 조건 체크 (내부용)
+fn check_end(line: &str, block_type: HtmlBlockType) -> bool {
     let lower = line.to_ascii_lowercase();
     match block_type {
         HtmlBlockType::Type1 => {

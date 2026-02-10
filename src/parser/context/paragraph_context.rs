@@ -66,11 +66,11 @@ impl ParagraphContext {
         }
 
         // HTML Block 시작이면 (type 1-6만) Paragraph 종료 후 HTML Block 시작
-        if let Some(block_type) = html_block::detect_start(line) {
+        if let Ok(html_block::HtmlBlockOk::Start(block_type)) = html_block::parse(line, None) {
             if html_block::can_interrupt_paragraph(block_type) {
                 let text = self.pending_lines.join("\n");
-                // Check if end condition met on same line
-                if html_block::check_end(line, block_type) {
+                // 같은 줄에서 종료 조건도 충족하는지 확인
+                if let Ok(html_block::HtmlBlockOk::End) = html_block::parse(line, Some(block_type)) {
                     let node = html_block::finalize(vec![line.to_string()]);
                     return (vec![paragraph::parse(&text), node], ParsingContext::None(NoneContext));
                 }
