@@ -185,7 +185,7 @@ fn process_line_in_blockquote(current_line: &str, pending_lines: Vec<String>) ->
     }
 
     // HTML Block 시작이면 Blockquote 종료
-    if let Some(block_type) = html_block::parse(current_line) {
+    if let Ok(block_type) = html_block::parse(current_line) {
         if html_block::can_interrupt_paragraph(block_type) {
             let bq_node = blockquote::finalize(pending_lines, parse_block_simple);
             if html_block::check_end(current_line, block_type) {
@@ -285,7 +285,7 @@ fn parse_block_simple(block: &str) -> BlockNode {
     }
 
     // HTML block detection for simple block parsing
-    if let Some(_block_type) = html_block::parse(block) {
+    if let Ok(_block_type) = html_block::parse(block) {
         return html_block::finalize(vec![block.to_string()]);
     }
 

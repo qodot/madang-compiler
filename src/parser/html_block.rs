@@ -13,29 +13,37 @@ pub enum HtmlBlockType {
     Type2,
 }
 
+/// HTML block 파싱 실패 사유
+#[derive(Debug, PartialEq)]
+pub enum HtmlBlockErr {
+    /// 4칸 이상 들여쓰기 (코드 블록으로 해석됨)
+    CodeBlockIndented,
+    /// HTML block 시작 조건에 해당하지 않음
+    NotHtmlBlock,
+}
+
 /// HTML block 시작 조건 감지 (0~3칸 들여쓰기 허용)
-/// 반환: Some(HtmlBlockType) if 시작 조건 충족
-pub fn parse(line: &str) -> Option<HtmlBlockType> {
+pub fn parse(line: &str) -> Result<HtmlBlockType, HtmlBlockErr> {
     let trimmed = line.trim_start();
     let indent = line.len() - trimmed.len();
     if indent > 3 {
-        return None;
+        return Err(HtmlBlockErr::CodeBlockIndented);
     }
 
     // Type 1: <pre, <script, <style, <textarea (case-insensitive)
     // followed by space, tab, >, or end of line
     for tag in &["pre", "script", "style", "textarea"] {
         if starts_with_tag_type1(trimmed, tag) {
-            return Some(HtmlBlockType::Type1);
+            return Ok(HtmlBlockType::Type1);
         }
     }
 
     // Type 2: <!--
     if trimmed.starts_with("<!--") {
-        return Some(HtmlBlockType::Type2);
+        return Ok(HtmlBlockType::Type2);
     }
 
-    None
+    Err(HtmlBlockErr::NotHtmlBlock)
 }
 
 /// Type 1 시작 조건: <tagname 뒤에 space, tab, >, or end of line
