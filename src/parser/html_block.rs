@@ -396,6 +396,41 @@ mod tests {
         "<table><tr><td>\nfoo\n</td></tr></table>",
         vec![BlockNode::html_block("<table><tr><td>\nfoo\n</td></tr></table>")]
     )]
+    // Example 151: </div> 닫는 태그로 시작
+    #[case(
+        "</div>\n*foo*",
+        vec![BlockNode::html_block("</div>\n*foo*")]
+    )]
+    // Example 153: <div> with attributes, multi-line
+    #[case(
+        "<div id=\"foo\"\n  class=\"bar\">\n</div>",
+        vec![BlockNode::html_block("<div id=\"foo\"\n  class=\"bar\">\n</div>")]
+    )]
+    // Example 154: <div> with attribute spanning lines
+    #[case(
+        "<div id=\"foo\" class=\"bar\n  baz\">\n</div>",
+        vec![BlockNode::html_block("<div id=\"foo\" class=\"bar\n  baz\">\n</div>")]
+    )]
+    // Example 156: <div> with attribute, no closing >
+    #[case(
+        "<div id=\"foo\"\n*hi*",
+        vec![BlockNode::html_block("<div id=\"foo\"\n*hi*")]
+    )]
+    // Example 157: <div> with incomplete attribute
+    #[case(
+        "<div class\nfoo",
+        vec![BlockNode::html_block("<div class\nfoo")]
+    )]
+    // Example 158: <div> with arbitrary content after tag
+    #[case(
+        "<div *???-&&&-<---\n*foo*",
+        vec![BlockNode::html_block("<div *???-&&&-<---\n*foo*")]
+    )]
+    // Example 161: <div> followed by fenced code block (all one HTML block)
+    #[case(
+        "<div></div>\n``` c\nint x = 33;\n```",
+        vec![BlockNode::html_block("<div></div>\n``` c\nint x = 33;\n```")]
+    )]
     fn test_html_block_type6(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
@@ -406,6 +441,14 @@ mod tests {
     // =========================================================================
 
     #[rstest]
+    // Example 148: Type 1(pre) + Type 6(table) 상호작용 — 복합 블록 타입 처리 미구현
+    #[case(
+        "<table><tr><td>\n<pre>\n**Hello**,\n\n_world_.\n</pre>\n</td></tr></table>",
+        vec![
+            BlockNode::html_block("<table><tr><td>\n<pre>\n**Hello**,"),
+            BlockNode::paragraph(vec![InlineNode::text("_world_.\n</pre>\n</td></tr></table>")]),
+        ]
+    )]
     // Example 174: HTML block inside blockquote (blockquote 내 HTML block 감지 미구현)
     #[case(
         "> <div>\n> foo\n\nbar",
