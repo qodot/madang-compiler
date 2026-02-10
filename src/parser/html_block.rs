@@ -15,7 +15,7 @@ pub enum HtmlBlockType {
 
 /// HTML block 시작 조건 감지 (0~3칸 들여쓰기 허용)
 /// 반환: Some(HtmlBlockType) if 시작 조건 충족
-pub fn detect_start(line: &str) -> Option<HtmlBlockType> {
+pub fn parse(line: &str) -> Option<HtmlBlockType> {
     let trimmed = line.trim_start();
     let indent = line.len() - trimmed.len();
     if indent > 3 {

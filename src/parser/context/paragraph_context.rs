@@ -66,7 +66,7 @@ impl ParagraphContext {
         }
 
         // HTML Block 시작이면 (type 1-6만) Paragraph 종료 후 HTML Block 시작
-        if let Some(block_type) = html_block::detect_start(line) {
+        if let Some(block_type) = html_block::parse(line) {
             if html_block::can_interrupt_paragraph(block_type) {
                 let text = self.pending_lines.join("\n");
                 // Check if end condition met on same line

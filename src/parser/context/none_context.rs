@@ -40,7 +40,7 @@ impl NoneContext {
         }
 
         // HTML Block 시작 감지
-        if let Some(block_type) = html_block::detect_start(line) {
+        if let Some(block_type) = html_block::parse(line) {
             let context = ParsingContext::HtmlBlock {
                 block_type,
                 pending_lines: vec![line.to_string()],
