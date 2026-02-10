@@ -149,17 +149,18 @@ fn process_line_in_html_block(
     pending_lines: Vec<String>,
 ) -> LineResult {
     let pending_lines = push_string(pending_lines, current_line.to_string());
-    if html_block::check_end(current_line, block_type) {
-        let node = html_block::finalize(pending_lines);
-        (vec![node], ParsingContext::None(NoneContext))
-    } else {
-        (
+    match html_block::parse(current_line, Some(block_type)) {
+        Ok(html_block::HtmlBlockOk::End) => {
+            let node = html_block::finalize(pending_lines);
+            (vec![node], ParsingContext::None(NoneContext))
+        }
+        _ => (
             vec![],
             ParsingContext::HtmlBlock {
                 block_type,
                 pending_lines,
             },
-        )
+        ),
     }
 }
 
@@ -185,10 +186,10 @@ fn process_line_in_blockquote(current_line: &str, pending_lines: Vec<String>) ->
     }
 
     // HTML Block 시작이면 Blockquote 종료
-    if let Ok(block_type) = html_block::parse(current_line) {
+    if let Ok(html_block::HtmlBlockOk::Start(block_type)) = html_block::parse(current_line, None) {
         if html_block::can_interrupt_paragraph(block_type) {
             let bq_node = blockquote::finalize(pending_lines, parse_block_simple);
-            if html_block::check_end(current_line, block_type) {
+            if let Ok(html_block::HtmlBlockOk::End) = html_block::parse(current_line, Some(block_type)) {
                 let html_node = html_block::finalize(vec![current_line.to_string()]);
                 return (vec![bq_node, html_node], ParsingContext::None(NoneContext));
             }
@@ -285,7 +286,7 @@ fn parse_block_simple(block: &str) -> BlockNode {
     }
 
     // HTML block detection for simple block parsing
-    if let Ok(_block_type) = html_block::parse(block) {
+    if let Ok(html_block::HtmlBlockOk::Start(_)) = html_block::parse(block, None) {
         return html_block::finalize(vec![block.to_string()]);
     }
 

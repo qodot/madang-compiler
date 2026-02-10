@@ -40,16 +40,16 @@ impl NoneContext {
         }
 
         // HTML Block 시작 감지
-        if let Ok(block_type) = html_block::parse(line) {
+        if let Ok(html_block::HtmlBlockOk::Start(block_type)) = html_block::parse(line, None) {
+            // 같은 줄에서 종료 조건도 충족하는지 확인
+            if let Ok(html_block::HtmlBlockOk::End) = html_block::parse(line, Some(block_type)) {
+                let node = html_block::finalize(vec![line.to_string()]);
+                return (vec![node], ParsingContext::None(NoneContext));
+            }
             let context = ParsingContext::HtmlBlock {
                 block_type,
                 pending_lines: vec![line.to_string()],
             };
-            // Type 1-5: check if end condition is on the same line
-            if html_block::check_end(line, block_type) {
-                let node = html_block::finalize(vec![line.to_string()]);
-                return (vec![node], ParsingContext::None(NoneContext));
-            }
             return (vec![], context);
         }
 
