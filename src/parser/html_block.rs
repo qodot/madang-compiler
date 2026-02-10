@@ -11,6 +11,8 @@ pub enum HtmlBlockType {
     Type1,
     /// Type 2: <!-- ... -->
     Type2,
+    /// Type 3: <? ... ?>
+    Type3,
 }
 
 /// HTML block 파싱 성공 결과
@@ -64,6 +66,11 @@ fn parse_start(line: &str) -> Result<HtmlBlockOk, HtmlBlockErr> {
         return Ok(HtmlBlockOk::Start(HtmlBlockType::Type2));
     }
 
+    // Type 3: <?
+    if trimmed.starts_with("<?") {
+        return Ok(HtmlBlockOk::Start(HtmlBlockType::Type3));
+    }
+
     Err(HtmlBlockErr::NotHtmlBlock)
 }
 
@@ -99,6 +106,7 @@ fn check_end(line: &str, block_type: HtmlBlockType) -> bool {
                 || lower.contains("</textarea>")
         }
         HtmlBlockType::Type2 => line.contains("-->"),
+        HtmlBlockType::Type3 => line.contains("?>"),
     }
 }
 
@@ -111,7 +119,7 @@ pub fn finalize(lines: Vec<String>) -> BlockNode {
 /// HTML block이 paragraph를 interrupt할 수 있는지
 pub fn can_interrupt_paragraph(block_type: HtmlBlockType) -> bool {
     match block_type {
-        HtmlBlockType::Type1 | HtmlBlockType::Type2 => true,
+        HtmlBlockType::Type1 | HtmlBlockType::Type2 | HtmlBlockType::Type3 => true,
     }
 }
 
@@ -210,6 +218,25 @@ mod tests {
         ]
     )]
     fn test_html_block_type2(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse(input);
+        assert_eq!(doc.children, expected);
+    }
+
+    // =========================================================================
+    // HTML Block Type 3 — Example 180
+    // https://spec.commonmark.org/0.31.2/#html-blocks
+    // =========================================================================
+
+    #[rstest]
+    // Example 180: <?php processing instruction with blank lines
+    #[case(
+        "<?php\n\n  echo '>';\n\n?>\nokay",
+        vec![
+            BlockNode::html_block("<?php\n\n  echo '>';\n\n?>"),
+            BlockNode::paragraph(vec![InlineNode::text("okay")]),
+        ]
+    )]
+    fn test_html_block_type3(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
     }
