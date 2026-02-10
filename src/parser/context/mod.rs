@@ -2,16 +2,17 @@
 //!
 //! 시작 정보(Start)와 파싱 상태(ParsingContext)를 분리하여 관리합니다.
 
+mod html_block_context;
 mod list_context;
 mod none_context;
 mod paragraph_context;
 
+pub use html_block_context::HtmlBlockContext;
 pub use list_context::ListContext;
 pub use none_context::NoneContext;
 pub use paragraph_context::ParagraphContext;
 
 use crate::node::BlockNode;
-use crate::parser::html_block::HtmlBlockType;
 
 // 각 파서 모듈에서 타입 re-export
 pub use super::code_block_fenced::CodeBlockFencedStart;
@@ -59,10 +60,5 @@ pub enum ParsingContext {
     },
 
     /// HTML Block 파싱 중
-    HtmlBlock {
-        /// HTML block 타입 (1-7)
-        block_type: HtmlBlockType,
-        /// 축적된 줄
-        pending_lines: Vec<String>,
-    },
+    HtmlBlock(HtmlBlockContext),
 }

@@ -46,10 +46,10 @@ impl NoneContext {
                 let node = html_block::finalize(vec![line.to_string()]);
                 return (vec![node], ParsingContext::None(NoneContext));
             }
-            let context = ParsingContext::HtmlBlock {
+            let context = ParsingContext::HtmlBlock(super::HtmlBlockContext::new(
                 block_type,
-                pending_lines: vec![line.to_string()],
-            };
+                vec![line.to_string()],
+            ));
             return (vec![], context);
         }
 
