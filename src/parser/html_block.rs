@@ -17,6 +17,15 @@ pub enum HtmlBlockType {
     Type4,
     /// Type 5: <![CDATA[ ... ]]>
     Type5,
+    /// Type 6: 특정 태그 목록 (div, table 등) — 빈 줄로 종료
+    Type6,
+}
+
+impl HtmlBlockType {
+    /// 빈 줄로 종료되는 타입인지 (Type 6, 7)
+    pub fn ends_on_blank_line(self) -> bool {
+        matches!(self, HtmlBlockType::Type6)
+    }
 }
 
 /// HTML block 파싱 성공 결과
@@ -87,6 +96,11 @@ fn parse_start(line: &str) -> Result<HtmlBlockOk, HtmlBlockErr> {
         return Ok(HtmlBlockOk::Start(HtmlBlockType::Type4));
     }
 
+    // Type 6: 특정 태그의 여는/닫는 태그
+    if starts_with_tag_type6(trimmed) {
+        return Ok(HtmlBlockOk::Start(HtmlBlockType::Type6));
+    }
+
     Err(HtmlBlockErr::NotHtmlBlock)
 }
 
@@ -111,6 +125,47 @@ fn starts_with_tag_type1(trimmed: &str, tag: &str) -> bool {
         || rest.starts_with('>')
 }
 
+/// Type 6 태그 목록
+const TYPE6_TAGS: &[&str] = &[
+    "address", "article", "aside", "base", "basefont", "blockquote", "body",
+    "caption", "center", "col", "colgroup", "dd", "details", "dialog", "dir",
+    "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
+    "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header",
+    "hr", "html", "iframe", "legend", "li", "link", "main", "menu", "menuitem",
+    "nav", "noframes", "ol", "optgroup", "option", "p", "param", "search",
+    "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead",
+    "title", "tr", "track", "ul",
+];
+
+/// Type 6 시작 조건: <tagname 또는 </tagname 뒤에 space, tab, >, />, or end of line
+fn starts_with_tag_type6(trimmed: &str) -> bool {
+    let lower = trimmed.to_ascii_lowercase();
+
+    let after_bracket = if lower.starts_with("</") {
+        &lower[2..]
+    } else if lower.starts_with('<') {
+        &lower[1..]
+    } else {
+        return false;
+    };
+
+    for tag in TYPE6_TAGS {
+        if after_bracket.starts_with(tag) {
+            let rest = &after_bracket[tag.len()..];
+            if rest.is_empty()
+                || rest.starts_with(' ')
+                || rest.starts_with('\t')
+                || rest.starts_with('>')
+                || rest.starts_with("/>")
+                || rest.starts_with('\n')
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// 종료 조건 체크 (내부용)
 fn check_end(line: &str, block_type: HtmlBlockType) -> bool {
     let lower = line.to_ascii_lowercase();
@@ -125,6 +180,7 @@ fn check_end(line: &str, block_type: HtmlBlockType) -> bool {
         HtmlBlockType::Type3 => line.contains("?>"),
         HtmlBlockType::Type4 => line.contains('>'),
         HtmlBlockType::Type5 => line.contains("]]>"),
+        HtmlBlockType::Type6 => line.trim().is_empty(),
     }
 }
 
@@ -137,7 +193,7 @@ pub fn finalize(lines: Vec<String>) -> BlockNode {
 /// HTML block이 paragraph를 interrupt할 수 있는지
 pub fn can_interrupt_paragraph(block_type: HtmlBlockType) -> bool {
     match block_type {
-        HtmlBlockType::Type1 | HtmlBlockType::Type2 | HtmlBlockType::Type3 | HtmlBlockType::Type4 | HtmlBlockType::Type5 => true,
+        HtmlBlockType::Type1 | HtmlBlockType::Type2 | HtmlBlockType::Type3 | HtmlBlockType::Type4 | HtmlBlockType::Type5 | HtmlBlockType::Type6 => true,
     }
 }
 
@@ -290,6 +346,57 @@ mod tests {
         ]
     )]
     fn test_html_block_type5(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse(input);
+        assert_eq!(doc.children, expected);
+    }
+
+    // =========================================================================
+    // HTML Block Type 6 — Examples 148-161
+    // https://spec.commonmark.org/0.31.2/#html-blocks
+    // =========================================================================
+
+    #[rstest]
+    // Example 149: <table> ends at blank line, followed by paragraph
+    #[case(
+        "<table>\n  <tr>\n    <td>\n           hi\n    </td>\n  </tr>\n</table>\n\nokay.",
+        vec![
+            BlockNode::html_block("<table>\n  <tr>\n    <td>\n           hi\n    </td>\n  </tr>\n</table>"),
+            BlockNode::paragraph(vec![InlineNode::text("okay.")]),
+        ]
+    )]
+    // Example 150: <div> with indent, no blank line → ends at document end
+    #[case(
+        " <div>\n  *hello*\n         <foo><a>",
+        vec![BlockNode::html_block(" <div>\n  *hello*\n         <foo><a>")]
+    )]
+    // Example 152: <DIV> (case insensitive), blank line splits into HTML + paragraph + HTML
+    #[case(
+        "<DIV CLASS=\"foo\">\n\n*Markdown*\n\n</DIV>",
+        vec![
+            BlockNode::html_block("<DIV CLASS=\"foo\">"),
+            BlockNode::paragraph(vec![InlineNode::text("*Markdown*")]),
+            BlockNode::html_block("</DIV>"),
+        ]
+    )]
+    // Example 155: <div> blank line in middle → HTML block ends, paragraph starts
+    #[case(
+        "<div>\n*foo*\n\n*bar*",
+        vec![
+            BlockNode::html_block("<div>\n*foo*"),
+            BlockNode::paragraph(vec![InlineNode::text("*bar*")]),
+        ]
+    )]
+    // Example 159: single line <div> with content, no blank line → ends at doc end
+    #[case(
+        "<div><a href=\"bar\">*foo*</a></div>",
+        vec![BlockNode::html_block("<div><a href=\"bar\">*foo*</a></div>")]
+    )]
+    // Example 160: <table> single block, no blank line
+    #[case(
+        "<table><tr><td>\nfoo\n</td></tr></table>",
+        vec![BlockNode::html_block("<table><tr><td>\nfoo\n</td></tr></table>")]
+    )]
+    fn test_html_block_type6(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
     }
