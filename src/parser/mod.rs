@@ -20,10 +20,10 @@ use crate::node::{BlockNode, CodeBlockNode, DocumentNode};
 use code_block_fenced::{parse as parse_code_block_fenced, CodeBlockFencedOk};
 use code_block_indented::try_start as try_start_code_block_indented;
 use context::{
-    CodeBlockFencedStart, CodeBlockIndentedStartReason, LineResult, NoneContext, ParsingContext,
+    CodeBlockFencedStart, CodeBlockIndentedStartReason, HtmlBlockContext, LineResult, NoneContext,
+    ParsingContext,
 };
 use helpers::trim_blank_lines;
-use html_block::HtmlBlockType;
 
 /// 파서 상태: (완성된 노드들, 현재 컨텍스트) - fold 누적용
 type ParserState = (Vec<BlockNode>, ParsingContext);
@@ -61,9 +61,7 @@ fn process_line(line: &str, context: ParsingContext, nodes: Vec<BlockNode>) -> P
         ParsingContext::CodeBlockIndented { pending_lines, pending_blank_count } => {
             process_line_in_code_block_indented(line, pending_lines, pending_blank_count)
         }
-        ParsingContext::HtmlBlock { block_type, pending_lines } => {
-            process_line_in_html_block(line, block_type, pending_lines)
-        }
+        ParsingContext::HtmlBlock(ctx) => ctx.parse(line),
     };
 
     // 새로 완성된 노드들을 누적
@@ -142,37 +140,6 @@ fn process_line_in_code_block_indented(
     }
 }
 
-/// HTML Block 상태에서 줄 처리
-fn process_line_in_html_block(
-    current_line: &str,
-    block_type: HtmlBlockType,
-    pending_lines: Vec<String>,
-) -> LineResult {
-    match html_block::parse(current_line, Some(block_type)) {
-        Ok(html_block::HtmlBlockOk::End) => {
-            // Type 6/7: 빈 줄로 종료 — 빈 줄은 블록에 포함하지 않음
-            // Type 1-5: 종료 줄은 블록에 포함
-            let pending_lines = if block_type.ends_on_blank_line() {
-                pending_lines
-            } else {
-                push_string(pending_lines, current_line.to_string())
-            };
-            let node = html_block::finalize(pending_lines);
-            (vec![node], ParsingContext::None(NoneContext))
-        }
-        _ => {
-            let pending_lines = push_string(pending_lines, current_line.to_string());
-            (
-                vec![],
-                ParsingContext::HtmlBlock {
-                    block_type,
-                    pending_lines,
-                },
-            )
-        }
-    }
-}
-
 /// Blockquote 상태에서 줄 처리
 /// 반환: (새로 완성된 노드들, 새 컨텍스트)
 fn process_line_in_blockquote(current_line: &str, pending_lines: Vec<String>) -> LineResult {
@@ -202,10 +169,10 @@ fn process_line_in_blockquote(current_line: &str, pending_lines: Vec<String>) ->
                 let html_node = html_block::finalize(vec![current_line.to_string()]);
                 return (vec![bq_node, html_node], ParsingContext::None(NoneContext));
             }
-            let context = ParsingContext::HtmlBlock {
+            let context = ParsingContext::HtmlBlock(HtmlBlockContext::new(
                 block_type,
-                pending_lines: vec![current_line.to_string()],
-            };
+                vec![current_line.to_string()],
+            ));
             return (vec![bq_node], context);
         }
     }
@@ -256,8 +223,8 @@ fn finalize_context(context: ParsingContext, nodes: Vec<BlockNode>) -> Vec<Block
             let node = BlockNode::CodeBlock(CodeBlockNode::new(None, content));
             push_node(nodes, node)
         }
-        ParsingContext::HtmlBlock { block_type: _, pending_lines } => {
-            let node = html_block::finalize(pending_lines);
+        ParsingContext::HtmlBlock(ctx) => {
+            let node = html_block::finalize(ctx.pending_lines);
             push_node(nodes, node)
         }
     }
