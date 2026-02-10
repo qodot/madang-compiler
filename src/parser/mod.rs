@@ -148,19 +148,28 @@ fn process_line_in_html_block(
     block_type: HtmlBlockType,
     pending_lines: Vec<String>,
 ) -> LineResult {
-    let pending_lines = push_string(pending_lines, current_line.to_string());
     match html_block::parse(current_line, Some(block_type)) {
         Ok(html_block::HtmlBlockOk::End) => {
+            // Type 6/7: 빈 줄로 종료 — 빈 줄은 블록에 포함하지 않음
+            // Type 1-5: 종료 줄은 블록에 포함
+            let pending_lines = if block_type.ends_on_blank_line() {
+                pending_lines
+            } else {
+                push_string(pending_lines, current_line.to_string())
+            };
             let node = html_block::finalize(pending_lines);
             (vec![node], ParsingContext::None(NoneContext))
         }
-        _ => (
-            vec![],
-            ParsingContext::HtmlBlock {
-                block_type,
-                pending_lines,
-            },
-        ),
+        _ => {
+            let pending_lines = push_string(pending_lines, current_line.to_string());
+            (
+                vec![],
+                ParsingContext::HtmlBlock {
+                    block_type,
+                    pending_lines,
+                },
+            )
+        }
     }
 }
 
