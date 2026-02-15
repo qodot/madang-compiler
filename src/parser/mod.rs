@@ -11,6 +11,7 @@ mod heading;
 mod heading_setext;
 mod helpers;
 mod html_block;
+pub(crate) mod inline;
 mod list;
 mod list_item;
 mod paragraph;

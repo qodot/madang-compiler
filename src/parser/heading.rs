@@ -1,7 +1,8 @@
 //! https://spec.commonmark.org/0.31.2/#atx-headings
 
 use super::helpers::{calculate_indent, count_leading_char};
-use crate::node::{BlockNode, HeadingNode, InlineNode, TextNode};
+use super::inline::parse_inlines;
+use crate::node::{BlockNode, HeadingNode};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HeadingErr {
@@ -45,7 +46,7 @@ pub fn parse(line: &str) -> Result<BlockNode, HeadingErr> {
         let content = strip_closing_hashes(content);
         Ok(BlockNode::Heading(HeadingNode::new(
             level as u8,
-            vec![InlineNode::Text(TextNode::new(content))],
+            parse_inlines(content),
         )))
     } else {
         Err(HeadingErr::NoSpaceAfterHashes)

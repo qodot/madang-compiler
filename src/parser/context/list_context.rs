@@ -2,7 +2,7 @@
 
 use super::{ItemLine, LineResult, ListItemStart, NoneContext, ParsingContext};
 use crate::node::{
-    BlockNode, InlineNode, ListItemNode, ListNode, ParagraphNode, TextNode,
+    BlockNode, ListItemNode, ListNode, ParagraphNode,
 };
 use crate::parser::helpers::count_leading_char;
 use crate::parser::list_item;
@@ -282,9 +282,9 @@ fn parse_item_lines_with_text_only(lines: &[ItemLine]) -> Vec<BlockNode> {
 
         if has_text_only {
             // text_only가 있는 청크는 무조건 paragraph로 처리
-            result.push(BlockNode::Paragraph(ParagraphNode::new(vec![
-                InlineNode::Text(TextNode::new(&content)),
-            ])));
+            result.push(BlockNode::Paragraph(ParagraphNode::new(
+                crate::parser::inline::parse_inlines(&content),
+            )));
         } else {
             // 일반 청크는 전체 파서로 파싱
             let doc = crate::parser::parse(&content);
