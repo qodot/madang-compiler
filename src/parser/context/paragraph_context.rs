@@ -3,10 +3,10 @@
 use super::{
     HeadingSetextStartReason, ItemLine, LineResult, ListContext, ParsingContext,
 };
-use crate::node::{HeadingNode, InlineNode, TextNode};
+use crate::node::HeadingNode;
 use crate::parser::code_block_fenced::{parse as parse_code_block_fenced, CodeBlockFencedOk};
 use crate::parser::html_block;
-use crate::parser::{blockquote, heading, list_item, paragraph, thematic_break};
+use crate::parser::{blockquote, heading, inline, list_item, paragraph, thematic_break};
 use crate::parser::heading_setext::try_start as try_start_heading_setext;
 use crate::parser::helpers::calculate_indent;
 use super::NoneContext;
@@ -48,7 +48,7 @@ impl ParagraphContext {
             let text = self.pending_lines.join("\n");
             let node = crate::node::BlockNode::Heading(HeadingNode::new(
                 start.level.to_level(),
-                vec![InlineNode::Text(TextNode::new(&text))],
+                inline::parse_inlines(&text),
             ));
             return (vec![node], ParsingContext::None(NoneContext));
         }

@@ -2,14 +2,13 @@
 //!
 //! CommonMark 명세: https://spec.commonmark.org/0.31.2/#paragraphs
 
-use crate::node::{BlockNode, InlineNode, ParagraphNode, TextNode};
+use crate::node::{BlockNode, ParagraphNode};
+use super::inline::parse_inlines;
 
 /// Paragraph 파싱 (기본 fallback)
 /// 다른 블록 요소가 아닌 경우 항상 Paragraph로 처리
 pub fn parse(trimmed: &str) -> BlockNode {
-    BlockNode::Paragraph(ParagraphNode::new(vec![InlineNode::Text(
-        TextNode::new(trimmed),
-    )]))
+    BlockNode::Paragraph(ParagraphNode::new(parse_inlines(trimmed)))
 }
 
 #[cfg(test)]
