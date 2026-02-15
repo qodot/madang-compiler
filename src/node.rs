@@ -46,11 +46,39 @@ impl CodeSpanNode {
     }
 }
 
+/// Autolink 노드
+#[derive(Debug, Clone, PartialEq)]
+pub struct AutolinkNode {
+    /// 표시 텍스트 (URI 또는 이메일)
+    pub label: String,
+    /// 링크 대상 (URI 그대로 또는 mailto:이메일)
+    pub destination: String,
+}
+
+impl Node for AutolinkNode {}
+
+impl AutolinkNode {
+    pub fn uri(uri: &str) -> Self {
+        Self {
+            label: uri.to_string(),
+            destination: uri.to_string(),
+        }
+    }
+
+    pub fn email(email: &str) -> Self {
+        Self {
+            label: email.to_string(),
+            destination: format!("mailto:{}", email),
+        }
+    }
+}
+
 /// 인라인 노드 enum
 #[derive(Debug, Clone, PartialEq)]
 pub enum InlineNode {
     Text(TextNode),
     CodeSpan(CodeSpanNode),
+    Autolink(AutolinkNode),
     HardBreak,
     SoftBreak,
     // 향후: Emphasis, Strong, Link, Image 등
@@ -67,6 +95,16 @@ impl InlineNode {
     #[cfg(test)]
     pub fn code_span(s: &str) -> Self {
         InlineNode::CodeSpan(CodeSpanNode::new(s))
+    }
+
+    #[cfg(test)]
+    pub fn autolink_uri(uri: &str) -> Self {
+        InlineNode::Autolink(AutolinkNode::uri(uri))
+    }
+
+    #[cfg(test)]
+    pub fn autolink_email(email: &str) -> Self {
+        InlineNode::Autolink(AutolinkNode::email(email))
     }
 }
 

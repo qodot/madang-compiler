@@ -8,7 +8,7 @@ mod backslash_escape;
 mod code_span;
 mod line_break;
 
-use crate::node::{CodeSpanNode, InlineNode, TextNode};
+use crate::node::{AutolinkNode, CodeSpanNode, InlineNode, TextNode};
 
 /// raw 텍스트를 인라인 노드들로 파싱
 ///
@@ -53,6 +53,22 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
                             push_text_char(&mut result, '`');
                         }
                         pos += backtick_len;
+                    }
+                }
+            }
+            b'<' => {
+                match autolink::parse_autolink(&raw[pos..]) {
+                    Some(autolink::AutolinkResult::Uri { uri, bytes_consumed }) => {
+                        result.push(InlineNode::Autolink(AutolinkNode::uri(&uri)));
+                        pos += bytes_consumed;
+                    }
+                    Some(autolink::AutolinkResult::Email { email, bytes_consumed }) => {
+                        result.push(InlineNode::Autolink(AutolinkNode::email(&email)));
+                        pos += bytes_consumed;
+                    }
+                    None => {
+                        push_text_char(&mut result, '<');
+                        pos += 1;
                     }
                 }
             }
@@ -199,6 +215,33 @@ mod tests {
     // 이스케이프와 code span 혼합
     #[case("\\*`code`\\*", vec![InlineNode::text("*"), InlineNode::code_span("code"), InlineNode::text("*")])]
     fn test_parse_inlines_backslash_escape(#[case] input: &str, #[case] expected: Vec<InlineNode>) {
+        assert_eq!(parse_inlines(input), expected);
+    }
+
+    // =========================================================================
+    // parse_inlines — autolink 통합 테스트
+    // =========================================================================
+
+    #[rstest]
+    // Example 594: 기본 URI autolink
+    #[case("<http://foo.bar.baz>", vec![InlineNode::autolink_uri("http://foo.bar.baz")])]
+    // Example 597: MAILTO URI
+    #[case("<MAILTO:FOO@BAR.BAZ>", vec![InlineNode::autolink_uri("MAILTO:FOO@BAR.BAZ")])]
+    // Example 601: localhost
+    #[case("<localhost:5001/foo>", vec![InlineNode::autolink_uri("localhost:5001/foo")])]
+    // Example 602: 공백 포함 → 텍스트
+    #[case("<https://foo.bar/baz bim>", vec![InlineNode::text("<https://foo.bar/baz bim>")])]
+    // Example 604: email autolink
+    #[case("<foo@bar.example.com>", vec![InlineNode::autolink_email("foo@bar.example.com")])]
+    // Example 607: 빈 → 텍스트
+    #[case("<>", vec![InlineNode::text("<>")])]
+    // Example 609: scheme 1글자 → 텍스트
+    #[case("<m:abc>", vec![InlineNode::text("<m:abc>")])]
+    // Example 611: < > 없음 → 텍스트
+    #[case("https://example.com", vec![InlineNode::text("https://example.com")])]
+    // autolink 앞뒤에 텍스트
+    #[case("visit <http://example.com> now", vec![InlineNode::text("visit "), InlineNode::autolink_uri("http://example.com"), InlineNode::text(" now")])]
+    fn test_parse_inlines_autolink(#[case] input: &str, #[case] expected: Vec<InlineNode>) {
         assert_eq!(parse_inlines(input), expected);
     }
 
