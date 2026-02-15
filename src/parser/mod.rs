@@ -319,6 +319,48 @@ mod tests {
         assert!(matches!(&doc.children[2], BlockNode::List(_)));
     }
 
+    // Example 65: escaped # → not a heading
+    #[test]
+    fn example_65() {
+        let doc = parse("\\## foo\n");
+        println!("{:#?}", doc);
+        assert_eq!(doc.children.len(), 1);
+        assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
+    }
+
+    // Example 66: heading with emphasis and escaped *
+    #[test]
+    fn example_66() {
+        let doc = parse("# foo *bar* \\*baz\\*\n");
+        println!("{:#?}", doc);
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Heading(h) = &doc.children[0] {
+            assert_eq!(h.level, 1);
+            // children: text("foo "), emphasis([text("bar")]), text(" *baz*")
+            assert_eq!(h.children.len(), 3);
+        } else {
+            panic!("Expected heading");
+        }
+    }
+
+    // Example 76: escaped # in closing sequence
+    #[test]
+    fn example_76() {
+        let doc = parse("### foo \\###\n## foo #\\##\n# foo \\#\n");
+        println!("{:#?}", doc);
+        assert_eq!(doc.children.len(), 3);
+        if let BlockNode::Heading(h) = &doc.children[0] {
+            assert_eq!(h.level, 3);
+            // "foo ###" after inline parsing of "foo \###"
+        }
+        if let BlockNode::Heading(h) = &doc.children[1] {
+            assert_eq!(h.level, 2);
+        }
+        if let BlockNode::Heading(h) = &doc.children[2] {
+            assert_eq!(h.level, 1);
+        }
+    }
+
     // Example 61: thematic break inside list item
     #[test]
     fn example_61() {
