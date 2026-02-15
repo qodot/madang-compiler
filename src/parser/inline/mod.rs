@@ -3,6 +3,8 @@
 //! 블록 파싱 후 텍스트를 인라인 노드로 변환합니다.
 //! CommonMark 명세 Section 6: https://spec.commonmark.org/0.31.2/#inlines
 
+mod code_span;
+
 use crate::node::{InlineNode, TextNode};
 
 /// raw 텍스트를 인라인 노드들로 파싱
