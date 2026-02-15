@@ -3,6 +3,7 @@
 //! 블록 파싱 후 텍스트를 인라인 노드로 변환합니다.
 //! CommonMark 명세 Section 6: https://spec.commonmark.org/0.31.2/#inlines
 
+mod autolink;
 mod backslash_escape;
 mod code_span;
 mod line_break;
