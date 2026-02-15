@@ -34,11 +34,24 @@ impl TextNode {
     }
 }
 
+/// Code Span 노드 (인라인 코드)
+#[derive(Debug, Clone, PartialEq)]
+pub struct CodeSpanNode(pub String);
+
+impl Node for CodeSpanNode {}
+
+impl CodeSpanNode {
+    pub fn new(s: &str) -> Self {
+        CodeSpanNode(s.to_string())
+    }
+}
+
 /// 인라인 노드 enum
 #[derive(Debug, Clone, PartialEq)]
 pub enum InlineNode {
     Text(TextNode),
-    // 향후: Emphasis, Strong, CodeSpan, Link, Image 등
+    CodeSpan(CodeSpanNode),
+    // 향후: Emphasis, Strong, Link, Image 등
 }
 
 impl Node for InlineNode {}
@@ -47,6 +60,11 @@ impl InlineNode {
     #[cfg(test)]
     pub fn text(s: &str) -> Self {
         InlineNode::Text(TextNode::new(s))
+    }
+
+    #[cfg(test)]
+    pub fn code_span(s: &str) -> Self {
+        InlineNode::CodeSpan(CodeSpanNode::new(s))
     }
 }
 
