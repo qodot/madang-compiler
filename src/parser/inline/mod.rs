@@ -7,8 +7,9 @@ mod autolink;
 mod backslash_escape;
 mod code_span;
 mod line_break;
+mod raw_html;
 
-use crate::node::{AutolinkNode, CodeSpanNode, InlineNode, TextNode};
+use crate::node::{AutolinkNode, CodeSpanNode, InlineNode, RawHtmlNode, TextNode};
 
 /// raw 텍스트를 인라인 노드들로 파싱
 ///
@@ -67,8 +68,16 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
                         pos += bytes_consumed;
                     }
                     None => {
-                        push_text_char(&mut result, '<');
-                        pos += 1;
+                        match raw_html::parse_raw_html(&raw[pos..]) {
+                            Some(rh) => {
+                                result.push(InlineNode::RawHtml(RawHtmlNode::new(&rh.content)));
+                                pos += rh.bytes_consumed;
+                            }
+                            None => {
+                                push_text_char(&mut result, '<');
+                                pos += 1;
+                            }
+                        }
                     }
                 }
             }
@@ -273,6 +282,45 @@ mod tests {
     // Example 649: soft break 전후 spaces 제거
     #[case("foo \n baz", vec![InlineNode::text("foo"), InlineNode::SoftBreak, InlineNode::text("baz")])]
     fn test_parse_inlines_line_break(#[case] input: &str, #[case] expected: Vec<InlineNode>) {
+        assert_eq!(parse_inlines(input), expected);
+    }
+
+    // =========================================================================
+    // parse_inlines — raw HTML 통합 테스트
+    // =========================================================================
+
+    #[rstest]
+    // Example 613: 기본 open tags
+    #[case("<a><bab><c2c>", vec![InlineNode::raw_html("<a>"), InlineNode::raw_html("<bab>"), InlineNode::raw_html("<c2c>")])]
+    // Example 614: self-closing tags
+    #[case("<a/><b2/>", vec![InlineNode::raw_html("<a/>"), InlineNode::raw_html("<b2/>")])]
+    // Example 615: attributes with whitespace/newline
+    #[case("<a  /><b2\ndata=\"foo\" >", vec![InlineNode::raw_html("<a  />"), InlineNode::raw_html("<b2\ndata=\"foo\" >")])]
+    // Example 617: custom element
+    #[case("Foo <responsive-image src=\"foo.jpg\" />", vec![InlineNode::text("Foo "), InlineNode::raw_html("<responsive-image src=\"foo.jpg\" />")])]
+    // Example 618: invalid tag names → text
+    #[case("<33> <__>", vec![InlineNode::text("<33> <__>")])]
+    // Example 619: invalid attribute → text
+    #[case("<a h*#ref=\"hi\">", vec![InlineNode::text("<a h*#ref=\"hi\">")])]
+    // Example 623: closing tags
+    #[case("</a></foo >", vec![InlineNode::raw_html("</a>"), InlineNode::raw_html("</foo >")])]
+    // Example 624: closing tag with attributes → text
+    #[case("</a href=\"foo\">", vec![InlineNode::text("</a href=\"foo\">")])]
+    // Example 625: HTML comment with hyphens
+    #[case("foo <!-- this is a --\ncomment - with hyphens -->", vec![InlineNode::text("foo "), InlineNode::raw_html("<!-- this is a --\ncomment - with hyphens -->")])]
+    // Example 627: processing instruction
+    #[case("foo <?php echo $a; ?>", vec![InlineNode::text("foo "), InlineNode::raw_html("<?php echo $a; ?>")])]
+    // Example 628: declaration
+    #[case("foo <!ELEMENT br EMPTY>", vec![InlineNode::text("foo "), InlineNode::raw_html("<!ELEMENT br EMPTY>")])]
+    // Example 629: CDATA
+    #[case("foo <![CDATA[>&<]]>", vec![InlineNode::text("foo "), InlineNode::raw_html("<![CDATA[>&<]]>")])]
+    // Example 630: entity in attribute (not resolved in raw html)
+    #[case("foo <a href=\"&ouml;\">", vec![InlineNode::text("foo "), InlineNode::raw_html("<a href=\"&ouml;\">")])]
+    // Example 631: backslash in attribute
+    #[case("foo <a href=\"\\*\">", vec![InlineNode::text("foo "), InlineNode::raw_html("<a href=\"\\*\">")])]
+    // Example 632: backslash-escaped quote → invalid, backslash escape produces literal "
+    #[case("<a href=\"\\\"\">", vec![InlineNode::text("<a href=\"\"\">")])]
+    fn test_parse_inlines_raw_html(#[case] input: &str, #[case] expected: Vec<InlineNode>) {
         assert_eq!(parse_inlines(input), expected);
     }
 }
