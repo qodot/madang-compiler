@@ -279,4 +279,56 @@ mod tests {
         let doc = parse("");
         assert_eq!(doc.children.len(), 0);
     }
+
+    // Example 57: list → thematic break → list
+    #[test]
+    fn example_57() {
+        let doc = parse("- foo\n***\n- bar\n");
+        assert_eq!(doc.children.len(), 3);
+        assert!(matches!(&doc.children[0], BlockNode::List(_)));
+        assert!(matches!(&doc.children[1], BlockNode::ThematicBreak(_)));
+        assert!(matches!(&doc.children[2], BlockNode::List(_)));
+    }
+
+    // Example 58: paragraph → thematic break → paragraph
+    #[test]
+    fn example_58() {
+        let doc = parse("Foo\n***\nbar\n");
+        assert_eq!(doc.children.len(), 3);
+        assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
+        assert!(matches!(&doc.children[1], BlockNode::ThematicBreak(_)));
+        assert!(matches!(&doc.children[2], BlockNode::Paragraph(_)));
+    }
+
+    // Example 59: setext heading (Foo + ---) → paragraph
+    #[test]
+    fn example_59() {
+        let doc = parse("Foo\n---\nbar\n");
+        assert_eq!(doc.children.len(), 2);
+        assert!(matches!(&doc.children[0], BlockNode::Heading(_)));
+        assert!(matches!(&doc.children[1], BlockNode::Paragraph(_)));
+    }
+
+    // Example 60: * list → thematic break (* * *) → * list
+    #[test]
+    fn example_60() {
+        let doc = parse("* Foo\n* * *\n* Bar\n");
+        assert_eq!(doc.children.len(), 3);
+        assert!(matches!(&doc.children[0], BlockNode::List(_)));
+        assert!(matches!(&doc.children[1], BlockNode::ThematicBreak(_)));
+        assert!(matches!(&doc.children[2], BlockNode::List(_)));
+    }
+
+    // Example 61: thematic break inside list item
+    #[test]
+    fn example_61() {
+        let doc = parse("- Foo\n- * * *\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::List(list) = &doc.children[0] {
+            assert_eq!(list.children.len(), 2);
+            assert!(matches!(&list.children[1].children[0], BlockNode::ThematicBreak(_)));
+        } else {
+            panic!("Expected list");
+        }
+    }
 }

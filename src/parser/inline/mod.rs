@@ -4,19 +4,23 @@
 //! CommonMark 명세 Section 6: https://spec.commonmark.org/0.31.2/#inlines
 
 mod autolink;
-mod backslash_escape;
+pub(crate) mod backslash_escape;
 mod code_span;
+mod emphasis;
 mod line_break;
 mod raw_html;
 
 use crate::node::{AutolinkNode, CodeSpanNode, InlineNode, RawHtmlNode, TextNode};
+use emphasis::{DelimiterChar, DelimiterRun};
 
 /// raw 텍스트를 인라인 노드들로 파싱
 ///
 /// 블록 파서가 추출한 텍스트를 받아서 인라인 구조를 파싱합니다.
 pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
     let mut result = Vec::new();
+    let mut delimiters: Vec<DelimiterRun> = Vec::new();
     let mut pos = 0;
+    let mut force_new_text = false;
     let bytes = raw.as_bytes();
 
     while pos < raw.len() {
@@ -95,9 +99,45 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
                 // 다음 줄의 leading spaces 건너뛰기
                 pos += line_break::skip_leading_spaces(&raw[pos..]);
             }
+            b'*' | b'_' => {
+                let delim_char = if bytes[pos] == b'*' {
+                    DelimiterChar::Asterisk
+                } else {
+                    DelimiterChar::Underscore
+                };
+
+                let run_len = raw[pos..].chars().take_while(|&c| c == bytes[pos] as char).count();
+
+                let before = if pos > 0 { raw[..pos].chars().last() } else { None };
+                let after = raw[pos + run_len..].chars().next();
+
+                let (can_open, can_close) = emphasis::compute_flanking(delim_char, before, after);
+
+                // delimiter 텍스트를 별도 노드로 추가
+                let delim_text: String = std::iter::repeat(bytes[pos] as char).take(run_len).collect();
+                result.push(InlineNode::Text(TextNode(delim_text)));
+
+                delimiters.push(DelimiterRun {
+                    char: delim_char,
+                    original_length: run_len,
+                    length: run_len,
+                    can_open,
+                    can_close,
+                    position: result.len() - 1,
+                });
+
+                pos += run_len;
+                // delimiter 뒤의 텍스트가 합쳐지지 않도록 force_new_text 설정
+                force_new_text = true;
+            }
             _ => {
                 let c = raw[pos..].chars().next().unwrap();
-                push_text_char(&mut result, c);
+                if force_new_text {
+                    result.push(InlineNode::Text(TextNode(c.to_string())));
+                    force_new_text = false;
+                } else {
+                    push_text_char(&mut result, c);
+                }
                 pos += c.len_utf8();
             }
         }
@@ -107,7 +147,40 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
         return vec![InlineNode::Text(TextNode::new(""))];
     }
 
+    // emphasis/strong 처리
+    if !delimiters.is_empty() {
+        result = emphasis::process_emphasis(result, delimiters);
+    }
+
+    // 인접한 Text 노드 합치기
+    merge_adjacent_text(&mut result);
+
     result
+}
+
+/// 인접한 Text 노드를 합친다
+fn merge_adjacent_text(nodes: &mut Vec<InlineNode>) {
+    let mut i = 0;
+    while i + 1 < nodes.len() {
+        if let (InlineNode::Text(_), InlineNode::Text(_)) = (&nodes[i], &nodes[i + 1]) {
+            if let InlineNode::Text(next) = nodes.remove(i + 1) {
+                if let InlineNode::Text(current) = &mut nodes[i] {
+                    current.0.push_str(&next.0);
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
+}
+
+/// 마지막 노드가 Text이면 문자열을 추가, 아니면 새 Text 노드 생성
+fn push_text_str(result: &mut Vec<InlineNode>, s: &str) {
+    if let Some(InlineNode::Text(text)) = result.last_mut() {
+        text.0.push_str(s);
+    } else {
+        result.push(InlineNode::Text(TextNode(s.to_string())));
+    }
 }
 
 /// 마지막 노드가 Text이면 문자를 추가, 아니면 새 Text 노드 생성
@@ -251,6 +324,32 @@ mod tests {
     // autolink 앞뒤에 텍스트
     #[case("visit <http://example.com> now", vec![InlineNode::text("visit "), InlineNode::autolink_uri("http://example.com"), InlineNode::text(" now")])]
     fn test_parse_inlines_autolink(#[case] input: &str, #[case] expected: Vec<InlineNode>) {
+        assert_eq!(parse_inlines(input), expected);
+    }
+
+    // =========================================================================
+    // parse_inlines — emphasis 통합 테스트
+    // =========================================================================
+
+    #[rstest]
+    // Example 350: 기본 * emphasis
+    #[case("*foo bar*", vec![InlineNode::emphasis(vec![InlineNode::text("foo bar")])])]
+    // Example 355: 단어 중간 * emphasis
+    #[case("foo*bar*", vec![InlineNode::text("foo"), InlineNode::emphasis(vec![InlineNode::text("bar")])])]
+    // Example 357: 기본 _ emphasis
+    #[case("_foo bar_", vec![InlineNode::emphasis(vec![InlineNode::text("foo bar")])])]
+    // Example 393: 기본 ** strong
+    #[case("**foo bar**", vec![InlineNode::strong(vec![InlineNode::text("foo bar")])])]
+    // Example 410: 기본 __ strong
+    #[case("__foo bar__", vec![InlineNode::strong(vec![InlineNode::text("foo bar")])])]
+    // Example 351: * 뒤에 공백 → emphasis 아님
+    #[case("a * foo bar*", vec![InlineNode::text("a * foo bar*")])]
+    // Example 358: _ 뒤에 공백 → emphasis 아님
+    #[case("_ foo bar_", vec![InlineNode::text("_ foo bar_")])]
+    // Example 360: _ 단어 내부 → emphasis 아님
+    #[case("foo_bar_", vec![InlineNode::text("foo_bar_")])]
+    // Example 348 (code span): 닫는 ` 없음 → 텍스트 (기존 테스트와 충돌 안 하는지 확인)
+    fn test_parse_inlines_emphasis(#[case] input: &str, #[case] expected: Vec<InlineNode>) {
         assert_eq!(parse_inlines(input), expected);
     }
 
