@@ -6,6 +6,7 @@ use crate::node::{
 };
 use crate::parser::helpers::count_leading_char;
 use crate::parser::list_item;
+use crate::parser::thematic_break;
 
 pub struct ListContext {
     /// 첫 아이템의 시작 정보 (리스트 타입 결정용)
@@ -38,8 +39,11 @@ impl ListContext {
         let indent = count_leading_char(line, ' ');
         let first_content_indent = self.first_item_start.content_indent;
 
-        // 1. 새 아이템 체크 (Example 301: current_content_indent 기준)
+        // 1. Thematic break 우선 체크 (Example 60: thematic break가 list item보다 우선)
         if indent < self.current_content_indent {
+            if thematic_break::parse(line).is_ok() {
+                return self.end_and_reprocess(line);
+            }
             if let Ok(list_item::ListItemOk::Started(new_start)) = list_item::parse(line) {
                 if self.first_item_start.marker.is_same_type(&new_start.marker) {
                     // 같은 마커 타입 → 새 아이템으로 계속

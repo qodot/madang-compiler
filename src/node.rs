@@ -46,6 +46,34 @@ impl CodeSpanNode {
     }
 }
 
+/// Emphasis 노드 (*em* or _em_)
+#[derive(Debug, Clone, PartialEq)]
+pub struct EmphasisNode {
+    pub children: Vec<InlineNode>,
+}
+
+impl Node for EmphasisNode {}
+
+impl EmphasisNode {
+    pub fn new(children: Vec<InlineNode>) -> Self {
+        Self { children }
+    }
+}
+
+/// Strong emphasis 노드 (**strong** or __strong__)
+#[derive(Debug, Clone, PartialEq)]
+pub struct StrongNode {
+    pub children: Vec<InlineNode>,
+}
+
+impl Node for StrongNode {}
+
+impl StrongNode {
+    pub fn new(children: Vec<InlineNode>) -> Self {
+        Self { children }
+    }
+}
+
 /// Autolink 노드
 #[derive(Debug, Clone, PartialEq)]
 pub struct AutolinkNode {
@@ -96,9 +124,11 @@ pub enum InlineNode {
     CodeSpan(CodeSpanNode),
     Autolink(AutolinkNode),
     RawHtml(RawHtmlNode),
+    Emphasis(EmphasisNode),
+    Strong(StrongNode),
     HardBreak,
     SoftBreak,
-    // 향후: Emphasis, Strong, Link, Image 등
+    // 향후: Link, Image 등
 }
 
 impl Node for InlineNode {}
@@ -112,6 +142,16 @@ impl InlineNode {
     #[cfg(test)]
     pub fn code_span(s: &str) -> Self {
         InlineNode::CodeSpan(CodeSpanNode::new(s))
+    }
+
+    #[cfg(test)]
+    pub fn emphasis(children: Vec<InlineNode>) -> Self {
+        InlineNode::Emphasis(EmphasisNode::new(children))
+    }
+
+    #[cfg(test)]
+    pub fn strong(children: Vec<InlineNode>) -> Self {
+        InlineNode::Strong(StrongNode::new(children))
     }
 
     #[cfg(test)]

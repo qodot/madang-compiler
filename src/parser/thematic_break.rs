@@ -97,7 +97,7 @@ mod tests {
     #[case("a------", vec![BlockNode::paragraph(vec![InlineNode::text("a------")])])]
     #[case("---a---", vec![BlockNode::paragraph(vec![InlineNode::text("---a---")])])]
     // Example 56: 혼합 문자는 무효 → Paragraph
-    #[case("*-*", vec![BlockNode::paragraph(vec![InlineNode::text("*-*")])])]
+    #[case("*-*", vec![BlockNode::paragraph(vec![InlineNode::emphasis(vec![InlineNode::text("-")])])])]
     // 추가 케이스
     #[case("*****", vec![BlockNode::thematic_break()])]
     #[case("----------", vec![BlockNode::thematic_break()])]

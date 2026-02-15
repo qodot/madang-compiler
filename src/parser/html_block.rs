@@ -415,7 +415,7 @@ mod tests {
         "<style>p{color:red;}</style>\n*foo*",
         vec![
             BlockNode::html_block("<style>p{color:red;}</style>"),
-            BlockNode::paragraph(vec![InlineNode::text("*foo*")]),
+            BlockNode::paragraph(vec![InlineNode::emphasis(vec![InlineNode::text("foo")])]),
         ]
     )]
     // Example 178: Type 1 (script) content after end tag stays in block
@@ -439,7 +439,7 @@ mod tests {
         "<!-- foo -->*bar*\n*baz*",
         vec![
             BlockNode::html_block("<!-- foo -->*bar*"),
-            BlockNode::paragraph(vec![InlineNode::text("*baz*")]),
+            BlockNode::paragraph(vec![InlineNode::emphasis(vec![InlineNode::text("baz")])]),
         ]
     )]
     // Example 179: multi-line comment with blank lines
@@ -549,7 +549,7 @@ mod tests {
         "<DIV CLASS=\"foo\">\n\n*Markdown*\n\n</DIV>",
         vec![
             BlockNode::html_block("<DIV CLASS=\"foo\">"),
-            BlockNode::paragraph(vec![InlineNode::text("*Markdown*")]),
+            BlockNode::paragraph(vec![InlineNode::emphasis(vec![InlineNode::text("Markdown")])]),
             BlockNode::html_block("</DIV>"),
         ]
     )]
@@ -558,7 +558,7 @@ mod tests {
         "<div>\n*foo*\n\n*bar*",
         vec![
             BlockNode::html_block("<div>\n*foo*"),
-            BlockNode::paragraph(vec![InlineNode::text("*bar*")]),
+            BlockNode::paragraph(vec![InlineNode::emphasis(vec![InlineNode::text("bar")])]),
         ]
     )]
     // Example 159: single line <div> with content, no blank line → ends at doc end
@@ -676,14 +676,14 @@ mod tests {
         "<del>\n\n*foo*\n\n</del>",
         vec![
             BlockNode::html_block("<del>"),
-            BlockNode::paragraph(vec![InlineNode::text("*foo*")]),
+            BlockNode::paragraph(vec![InlineNode::emphasis(vec![InlineNode::text("foo")])]),
             BlockNode::html_block("</del>"),
         ]
     )]
     // Example 168: <del>*foo*</del> — tag not alone on line → NOT Type 7, treated as paragraph
     #[case(
         "<del>*foo*</del>",
-        vec![BlockNode::paragraph(vec![InlineNode::raw_html("<del>"), InlineNode::text("*foo*"), InlineNode::raw_html("</del>")])]
+        vec![BlockNode::paragraph(vec![InlineNode::raw_html("<del>"), InlineNode::emphasis(vec![InlineNode::text("foo")]), InlineNode::raw_html("</del>")])]
     )]
     fn test_html_block_type7(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
