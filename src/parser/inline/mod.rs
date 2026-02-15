@@ -5,6 +5,7 @@
 
 mod backslash_escape;
 mod code_span;
+mod line_break;
 
 use crate::node::{CodeSpanNode, InlineNode, TextNode};
 
@@ -19,15 +20,23 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
     while pos < raw.len() {
         match bytes[pos] {
             b'\\' => {
-                match backslash_escape::try_escape(&raw[pos..]) {
-                    Some((escaped_char, consumed)) => {
-                        push_text_char(&mut result, escaped_char);
-                        pos += consumed;
-                    }
-                    None => {
-                        // 이스케이프 안 되면 리터럴 백슬래시
-                        push_text_char(&mut result, '\\');
-                        pos += 1;
+                // \ + \n → hard line break
+                if pos + 1 < raw.len() && bytes[pos + 1] == b'\n' {
+                    strip_trailing_spaces_from_last_text(&mut result);
+                    result.push(InlineNode::HardBreak);
+                    pos += 2; // skip \ and \n
+                    // 다음 줄의 leading spaces 건너뛰기
+                    pos += line_break::skip_leading_spaces(&raw[pos..]);
+                } else {
+                    match backslash_escape::try_escape(&raw[pos..]) {
+                        Some((escaped_char, consumed)) => {
+                            push_text_char(&mut result, escaped_char);
+                            pos += consumed;
+                        }
+                        None => {
+                            push_text_char(&mut result, '\\');
+                            pos += 1;
+                        }
                     }
                 }
             }
@@ -38,7 +47,6 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
                         pos += cs.bytes_consumed;
                     }
                     None => {
-                        // 매칭 안 되면 백틱 시퀀스 전체를 텍스트로 처리
                         let backtick_len = raw[pos..].chars().take_while(|&c| c == '`').count();
                         for _ in 0..backtick_len {
                             push_text_char(&mut result, '`');
@@ -47,14 +55,28 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
                     }
                 }
             }
+            b'\n' => {
+                // trailing spaces 2개 이상 → hard break, 그 외 → soft break
+                let trailing = last_text_trailing_spaces(&result);
+                if trailing >= 2 {
+                    strip_trailing_spaces_from_last_text(&mut result);
+                    result.push(InlineNode::HardBreak);
+                } else {
+                    strip_trailing_spaces_from_last_text(&mut result);
+                    result.push(InlineNode::SoftBreak);
+                }
+                pos += 1;
+                // 다음 줄의 leading spaces 건너뛰기
+                pos += line_break::skip_leading_spaces(&raw[pos..]);
+            }
             _ => {
-                push_text_char(&mut result, raw[pos..].chars().next().unwrap());
-                pos += raw[pos..].chars().next().unwrap().len_utf8();
+                let c = raw[pos..].chars().next().unwrap();
+                push_text_char(&mut result, c);
+                pos += c.len_utf8();
             }
         }
     }
 
-    // 빈 입력이면 빈 텍스트 노드 하나 반환 (기존 동작 유지)
     if result.is_empty() {
         return vec![InlineNode::Text(TextNode::new(""))];
     }
@@ -70,6 +92,23 @@ fn push_text_char(result: &mut Vec<InlineNode>, c: char) {
         let mut s = String::new();
         s.push(c);
         result.push(InlineNode::Text(TextNode(s)));
+    }
+}
+
+/// 마지막 Text 노드의 trailing spaces 수
+fn last_text_trailing_spaces(result: &[InlineNode]) -> usize {
+    if let Some(InlineNode::Text(text)) = result.last() {
+        line_break::count_trailing_spaces(&text.0)
+    } else {
+        0
+    }
+}
+
+/// 마지막 Text 노드에서 trailing spaces 제거
+fn strip_trailing_spaces_from_last_text(result: &mut Vec<InlineNode>) {
+    if let Some(InlineNode::Text(text)) = result.last_mut() {
+        let stripped = line_break::strip_trailing_spaces(&text.0).to_string();
+        text.0 = stripped;
     }
 }
 
@@ -120,14 +159,14 @@ mod tests {
     #[case("*foo`*`", vec![InlineNode::text("*foo"), InlineNode::code_span("*")])]
     // Example 342: code span이 link보다 우선
     #[case("[not a `link](/foo`)", vec![InlineNode::text("[not a "), InlineNode::code_span("link](/foo"), InlineNode::text(")")])]
+    // Example 343: code span 내에서 HTML은 리터럴
+    #[case("`<a href=\"`\">` ", vec![InlineNode::code_span("<a href=\""), InlineNode::text("\">` ")])]
     // Example 347: 닫는 백틱 없음 → 텍스트
     #[case("```foo``", vec![InlineNode::text("```foo``")])]
     // Example 348: 닫는 백틱 없음 → 텍스트
     #[case("`foo", vec![InlineNode::text("`foo")])]
     // Example 349: 첫 ` 매칭 안 됨, ``bar`` 매칭
     #[case("`foo``bar``", vec![InlineNode::text("`foo"), InlineNode::code_span("bar")])]
-    // Example 343: code span 내에서는 이스케이프 안 됨 (< 와 " 는 HTML 인코딩이므로 우리 AST에선 리터럴)
-    #[case("`<a href=\"`\">` ", vec![InlineNode::code_span("<a href=\""), InlineNode::text("\">` ")])]
     // code span 앞뒤에 텍스트
     #[case("hello `world` bye", vec![InlineNode::text("hello "), InlineNode::code_span("world"), InlineNode::text(" bye")])]
     // 여러 code span
@@ -148,17 +187,48 @@ mod tests {
     )]
     // Example 13: 구두점이 아닌 문자는 이스케이프 안 됨
     #[case("\\A\\a\\ \\3", vec![InlineNode::text("\\A\\a\\ \\3")])]
-    // Example 14 (부분): \*는 리터럴 * (emphasis 아님)
+    // Example 14 (부분): \*는 리터럴 *
     #[case("\\*not emphasized*", vec![InlineNode::text("*not emphasized*")])]
-    // Example 14 (부분): \`는 리터럴 ` (code span 아님)
+    // Example 14 (부분): \`는 리터럴 `
     #[case("\\`not code`", vec![InlineNode::text("`not code`")])]
-    // Example 15 (부분): \\는 리터럴 \ 
+    // Example 15 (부분): \\는 리터럴 \
     #[case("\\\\hello", vec![InlineNode::text("\\hello")])]
     // Example 17: code span 내에서는 이스케이프 안 됨
     #[case("`` \\[\\` ``", vec![InlineNode::code_span("\\[\\`")])]
     // 이스케이프와 code span 혼합
     #[case("\\*`code`\\*", vec![InlineNode::text("*"), InlineNode::code_span("code"), InlineNode::text("*")])]
     fn test_parse_inlines_backslash_escape(#[case] input: &str, #[case] expected: Vec<InlineNode>) {
+        assert_eq!(parse_inlines(input), expected);
+    }
+
+    // =========================================================================
+    // parse_inlines — line break 통합 테스트
+    // =========================================================================
+
+    #[rstest]
+    // Example 633: trailing spaces 2개 → hard break
+    #[case("foo  \nbaz", vec![InlineNode::text("foo"), InlineNode::HardBreak, InlineNode::text("baz")])]
+    // Example 634: \ + \n → hard break
+    #[case("foo\\\nbaz", vec![InlineNode::text("foo"), InlineNode::HardBreak, InlineNode::text("baz")])]
+    // Example 635: trailing spaces 많이 → hard break
+    #[case("foo       \nbaz", vec![InlineNode::text("foo"), InlineNode::HardBreak, InlineNode::text("baz")])]
+    // Example 636: hard break 후 leading spaces 제거
+    #[case("foo  \n     bar", vec![InlineNode::text("foo"), InlineNode::HardBreak, InlineNode::text("bar")])]
+    // Example 637: \ hard break 후 leading spaces 제거
+    #[case("foo\\\n     bar", vec![InlineNode::text("foo"), InlineNode::HardBreak, InlineNode::text("bar")])]
+    // Example 640: code span 내에서는 hard break 아님 (줄바꿈 → 공백)
+    #[case("`code  \nspan`", vec![InlineNode::code_span("code   span")])]
+    // Example 641: code span 내에서 \도 리터럴
+    #[case("`code\\\nspan`", vec![InlineNode::code_span("code\\ span")])]
+    // Example 644: \ + EOF → 리터럴 \ (hard break 아님)
+    #[case("foo\\", vec![InlineNode::text("foo\\")])]
+    // Example 645: trailing spaces + EOF → spaces 제거 (hard break 아님)
+    #[case("foo  ", vec![InlineNode::text("foo  ")])]
+    // Example 648: soft line break
+    #[case("foo\nbaz", vec![InlineNode::text("foo"), InlineNode::SoftBreak, InlineNode::text("baz")])]
+    // Example 649: soft break 전후 spaces 제거
+    #[case("foo \n baz", vec![InlineNode::text("foo"), InlineNode::SoftBreak, InlineNode::text("baz")])]
+    fn test_parse_inlines_line_break(#[case] input: &str, #[case] expected: Vec<InlineNode>) {
         assert_eq!(parse_inlines(input), expected);
     }
 }

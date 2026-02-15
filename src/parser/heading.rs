@@ -108,7 +108,7 @@ mod tests {
     // Example 69: 4칸 들여쓰기는 코드 블록
     #[case("    # foo", vec![BlockNode::code_block(None, "# foo")])]
     // Example 70: Paragraph 내 4칸 들여쓰기는 continuation
-    #[case("foo\n    # bar", vec![BlockNode::paragraph(vec![InlineNode::text("foo\n# bar")])])]
+    #[case("foo\n    # bar", vec![BlockNode::paragraph(vec![InlineNode::text("foo"), InlineNode::SoftBreak, InlineNode::text("# bar")])])]
     // Example 71: 닫는 # 시퀀스
     #[case("## foo ##", vec![BlockNode::heading(2, vec![InlineNode::text("foo")])])]
     #[case("  ###   bar    ###", vec![BlockNode::heading(3, vec![InlineNode::text("bar")])])]

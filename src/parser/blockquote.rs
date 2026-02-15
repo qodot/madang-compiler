@@ -119,13 +119,13 @@ mod tests {
     // Example 231: 4칸 들여쓰기는 code block
     #[case("    > # Foo", vec![BlockNode::code_block(None, "> # Foo")])]
     // Example 232: Lazy continuation
-    #[case("> bar\nbaz", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar\nbaz")])])])]
+    #[case("> bar\nbaz", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar"), InlineNode::SoftBreak, InlineNode::text("baz")])])])]
     // Example 233: Lazy continuation with > marker after lazy line
-    #[case("> bar\nbaz\n> foo", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar\nbaz\nfoo")])])])]
+    #[case("> bar\nbaz\n> foo", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar"), InlineNode::SoftBreak, InlineNode::text("baz"), InlineNode::SoftBreak, InlineNode::text("foo")])])])]
     // Example 234: Laziness 한계 - thematic break
     #[case("> foo\n---", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])]), BlockNode::thematic_break()])]
     // Example 238: 4칸 들여쓰기 lazy continuation
-    #[case("> foo\n    - bar", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("foo\n- bar")])])])]
+    #[case("> foo\n    - bar", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("foo"), InlineNode::SoftBreak, InlineNode::text("- bar")])])])]
     // Example 239: 빈 blockquote
     #[case(">", vec![BlockNode::blockquote(vec![])])]
     // Example 240: 공백만 있는 빈 blockquote
@@ -135,7 +135,7 @@ mod tests {
     // Example 242: 빈 줄로 분리된 두 blockquote
     #[case("> foo\n\n> bar", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])]), BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])])])]
     // Example 243: 여러 줄 하나의 paragraph
-    #[case("> foo\n> bar", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("foo\nbar")])])])]
+    #[case("> foo\n> bar", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("foo"), InlineNode::SoftBreak, InlineNode::text("bar")])])])]
     // Example 244: Blockquote 내 복수 단락
     #[case("> foo\n>\n> bar", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("foo")]), BlockNode::paragraph(vec![InlineNode::text("bar")])])])]
     #[case("> line1\n>\n> line2", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("line1")]), BlockNode::paragraph(vec![InlineNode::text("line2")])])])]
@@ -145,17 +145,17 @@ mod tests {
     // Example 246: blockquote/thematic break/blockquote
     #[case("> aaa\n***\n> bbb", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("aaa")])]), BlockNode::thematic_break(), BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bbb")])])])]
     // Example 247: Lazy continuation
-    #[case("> bar\nbaz", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar\nbaz")])])])]
+    #[case("> bar\nbaz", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar"), InlineNode::SoftBreak, InlineNode::text("baz")])])])]
     // Example 248: Blockquote 후 빈 줄 + paragraph
     #[case("> bar\n\nbaz", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])]), BlockNode::paragraph(vec![InlineNode::text("baz")])])]
     // 추가 케이스
     #[case("> hello", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("hello")])])])]
     #[case(">  hello", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("hello")])])])]
     #[case("> 안녕하세요", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("안녕하세요")])])])]
-    #[case("> a\n> b\n> c", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("a\nb\nc")])])])]
-    #[case(">line1\n>line2", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("line1\nline2")])])])]
-    #[case("> a\nb\nc", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("a\nb\nc")])])])]
-    #[case("> start\n> middle\nend", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("start\nmiddle\nend")])])])]
+    #[case("> a\n> b\n> c", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("a"), InlineNode::SoftBreak, InlineNode::text("b"), InlineNode::SoftBreak, InlineNode::text("c")])])])]
+    #[case(">line1\n>line2", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("line1"), InlineNode::SoftBreak, InlineNode::text("line2")])])])]
+    #[case("> a\nb\nc", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("a"), InlineNode::SoftBreak, InlineNode::text("b"), InlineNode::SoftBreak, InlineNode::text("c")])])])]
+    #[case("> start\n> middle\nend", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("start"), InlineNode::SoftBreak, InlineNode::text("middle"), InlineNode::SoftBreak, InlineNode::text("end")])])])]
     fn test_blockquote(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
@@ -173,7 +173,12 @@ mod tests {
     #[case("> > a\n> > b", 2, "a\nb")]
     fn test_nested_blockquote(#[case] input: &str, #[case] depth: usize, #[case] text: &str) {
         let doc = parse(input);
-        let expected = vec![bq(depth, BlockNode::paragraph(vec![InlineNode::text(text)]))];
+        let inlines: Vec<InlineNode> = text.split('\n').enumerate().fold(vec![], |mut acc, (i, part)| {
+            if i > 0 { acc.push(InlineNode::SoftBreak); }
+            acc.push(InlineNode::text(part));
+            acc
+        });
+        let expected = vec![bq(depth, BlockNode::paragraph(inlines))];
         assert_eq!(doc.children, expected);
     }
 

@@ -407,7 +407,7 @@ mod tests {
     #[rstest]
     // Example 253: 리스트 아닌 일반 블록 (대조용)
     #[case("A paragraph\nwith two lines.\n\n    indented code\n\n> A block quote.", vec![
-        BlockNode::paragraph(vec![InlineNode::text("A paragraph\nwith two lines.")]),
+        BlockNode::paragraph(vec![InlineNode::text("A paragraph"), InlineNode::SoftBreak, InlineNode::text("with two lines.")]),
         BlockNode::code_block(None, "indented code"),
         BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("A block quote.")])]),
     ])]
@@ -415,7 +415,7 @@ mod tests {
     #[case("1.  A paragraph\n    with two lines.\n\n        indented code\n\n    > A block quote.", vec![
         BlockNode::ordered_list('.', 1, false, vec![
             ListItemNode::new(vec![
-                BlockNode::paragraph(vec![InlineNode::text("A paragraph\nwith two lines.")]),
+                BlockNode::paragraph(vec![InlineNode::text("A paragraph"), InlineNode::SoftBreak, InlineNode::text("with two lines.")]),
                 BlockNode::code_block(None, "indented code"),
                 BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("A block quote.")])]),
             ]),
@@ -549,8 +549,8 @@ mod tests {
     // Example 284: 단일 빈 아이템
     #[case("*", vec![BlockNode::bullet_list(true, vec![ListItemNode::new(vec![])])])]
     // Example 285: 빈 아이템은 paragraph 인터럽트 불가
-    #[case("foo\n*", vec![BlockNode::paragraph(vec![InlineNode::text("foo\n*")])])]
-    #[case("foo\n1.", vec![BlockNode::paragraph(vec![InlineNode::text("foo\n1.")])])]
+    #[case("foo\n*", vec![BlockNode::paragraph(vec![InlineNode::text("foo"), InlineNode::SoftBreak, InlineNode::text("*")])])]
+    #[case("foo\n1.", vec![BlockNode::paragraph(vec![InlineNode::text("foo"), InlineNode::SoftBreak, InlineNode::text("1.")])])]
     // 추가 케이스: 단일 아이템 (마커 종류별)
     #[case("- item", vec![BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("item")])])])])]
     #[case("1. item", vec![BlockNode::ordered_list('.', 1, true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("item")])])])])]
@@ -559,7 +559,7 @@ mod tests {
     #[case("5. item", vec![BlockNode::ordered_list('.', 5, true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("item")])])])])]
     #[case("10. item", vec![BlockNode::ordered_list('.', 10, true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("item")])])])])]
     // 추가 케이스: Continuation line
-    #[case("- line1\n  line2\n  line3", vec![BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("line1\nline2\nline3")])])])])]
+    #[case("- line1\n  line2\n  line3", vec![BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("line1"), InlineNode::SoftBreak, InlineNode::text("line2"), InlineNode::SoftBreak, InlineNode::text("line3")])])])])]
     // 추가 케이스: 빈 아이템 연속 + 빈 줄 = loose
     #[case("-\n\n- foo", vec![
         BlockNode::bullet_list(false, vec![ListItemNode::new(vec![]), ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])])]),
