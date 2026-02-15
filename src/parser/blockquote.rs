@@ -118,8 +118,9 @@ mod tests {
     #[case("   > hello", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("hello")])])])]
     // Example 231: 4칸 들여쓰기는 code block
     #[case("    > # Foo", vec![BlockNode::code_block(None, "> # Foo")])]
-    // Example 232-233: Lazy continuation
+    // Example 232: Lazy continuation
     #[case("> bar\nbaz", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar\nbaz")])])])]
+    // Example 233: Lazy continuation with > marker after lazy line
     #[case("> bar\nbaz\n> foo", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar\nbaz\nfoo")])])])]
     // Example 234: Laziness 한계 - thematic break
     #[case("> foo\n---", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])]), BlockNode::thematic_break()])]
@@ -186,9 +187,19 @@ mod tests {
     #[case("> ```\nfoo\n```", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "")]), BlockNode::paragraph(vec![InlineNode::text("foo")]), BlockNode::code_block(None, "")])]
     // Example 249: 빈 blockquote 줄 후 paragraph
     #[case("> bar\n>\nbaz", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])]), BlockNode::paragraph(vec![InlineNode::text("baz")])])]
-    #[ignore = "현재 파서 미지원"]
+    // Example 252: blockquote 내 5칸 들여쓰기 → 코드블록, 4칸은 paragraph
+    #[case(">     code\n\n>    not code", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "code")]), BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("not code")])])])]
+    #[ignore = "blockquote 내 indented code block 미지원"]
     fn test_blockquote_pending(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
+    }
+
+    /// 탭 관련 blockquote 테스트 (CommonMark 명세 Section 2.2 Tabs)
+    #[rstest]
+    // Example 6: > 뒤 탭 → 탭이 3칸 공백으로 확장, 1칸은 구분자 → 코드 블록 (2칸 들여쓰기)
+    #[case(">\t\tfoo", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "  foo")])])]
+    #[ignore = "탭 처리 미지원"]
+    fn test_blockquote_tabs(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
     }
 }

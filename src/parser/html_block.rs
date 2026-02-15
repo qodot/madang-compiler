@@ -458,6 +458,14 @@ mod tests {
             BlockNode::code_block(None, "<!-- foo -->"),
         ]
     )]
+    // Example 184: <div> indent test — 0-3칸 OK, 4칸은 코드블록
+    #[case(
+        "  <div>\n\n    <div>",
+        vec![
+            BlockNode::html_block("  <div>"),
+            BlockNode::code_block(None, "<div>"),
+        ]
+    )]
     fn test_html_block_type2(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
@@ -598,6 +606,35 @@ mod tests {
         "<div></div>\n``` c\nint x = 33;\n```",
         vec![BlockNode::html_block("<div></div>\n``` c\nint x = 33;\n```")]
     )]
+    // Example 185: HTML block이 paragraph를 interrupt
+    #[case(
+        "Foo\n<div>\nbar\n</div>",
+        vec![
+            BlockNode::paragraph(vec![InlineNode::text("Foo")]),
+            BlockNode::html_block("<div>\nbar\n</div>"),
+        ]
+    )]
+    // Example 186: HTML block 뒤 blank line 없이 content → 모두 HTML block
+    #[case(
+        "<div>\nbar\n</div>\n*foo*",
+        vec![BlockNode::html_block("<div>\nbar\n</div>\n*foo*")]
+    )]
+    // Example 189: <div> 내부 content가 raw로 유지
+    #[case(
+        "<div>\n*Emphasized* text.\n</div>",
+        vec![BlockNode::html_block("<div>\n*Emphasized* text.\n</div>")]
+    )]
+    // Example 190: <table> 태그들이 blank line으로 분리
+    #[case(
+        "<table>\n\n<tr>\n\n<td>\nHi\n</td>\n\n</tr>\n\n</table>",
+        vec![
+            BlockNode::html_block("<table>"),
+            BlockNode::html_block("<tr>"),
+            BlockNode::html_block("<td>\nHi\n</td>"),
+            BlockNode::html_block("</tr>"),
+            BlockNode::html_block("</table>"),
+        ]
+    )]
     fn test_html_block_type6(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
@@ -649,6 +686,27 @@ mod tests {
         vec![BlockNode::paragraph(vec![InlineNode::text("<del>*foo*</del>")])]
     )]
     fn test_html_block_type7(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse(input);
+        assert_eq!(doc.children, expected);
+    }
+
+    // =========================================================================
+    // Example 191: <table> 내 4칸 인덴트 → 코드블록
+    // =========================================================================
+
+    #[rstest]
+    // Example 191: indented <td> becomes code block
+    #[case(
+        "<table>\n\n  <tr>\n\n    <td>\n      Hi\n    </td>\n\n  </tr>\n\n</table>",
+        vec![
+            BlockNode::html_block("<table>"),
+            BlockNode::html_block("  <tr>"),
+            BlockNode::code_block(None, "<td>\n  Hi\n</td>"),
+            BlockNode::html_block("  </tr>"),
+            BlockNode::html_block("</table>"),
+        ]
+    )]
+    fn test_html_block_example_191(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
     }

@@ -133,7 +133,8 @@ mod tests {
     #[case("###### h6 title", vec![BlockNode::heading(6, vec![InlineNode::text("h6 title")])])]
     #[case("# ", vec![BlockNode::heading(1, vec![InlineNode::text("")])])]
     #[case("## a ## b", vec![BlockNode::heading(2, vec![InlineNode::text("a ## b")])])]
-    #[case("#\tfoo", vec![BlockNode::heading(1, vec![InlineNode::text("foo")])])]
+    // Example 10: 탭이 # 뒤 공백 역할 (Section 2.2 Tabs)
+    #[case("#\tFoo", vec![BlockNode::heading(1, vec![InlineNode::text("Foo")])])]
     #[case("# foo\t#", vec![BlockNode::heading(1, vec![InlineNode::text("foo")])])]
     #[case(" # foo", vec![BlockNode::heading(1, vec![InlineNode::text("foo")])])]
     #[case("#    foo", vec![BlockNode::heading(1, vec![InlineNode::text("foo")])])]

@@ -12,6 +12,24 @@ mod tests {
     use rstest::rstest;
 
     // =========================================================================
+    // 3.1 Precedence - Example 42
+    // https://spec.commonmark.org/0.31.2/#precedence
+    // =========================================================================
+
+    #[rstest]
+    // Example 42: block structure takes precedence over inline — backtick이 텍스트의 일부
+    #[case("- `one\n- two`", vec![
+        BlockNode::bullet_list(true, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("`one")])]),
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("two`")])]),
+        ]),
+    ])]
+    fn test_precedence(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse(input);
+        assert_eq!(doc.children, expected);
+    }
+
+    // =========================================================================
     // 5.3 Lists - Example 301~326
     // https://spec.commonmark.org/0.31.2/#lists
     // =========================================================================
@@ -234,5 +252,45 @@ mod tests {
     #[ignore = "HTML block, 빈 아이템, link ref, fenced code 내용 등 미구현"]
     fn test_list_pending(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
         // 이 테스트들은 추가 기능 구현 후 활성화
+    }
+
+    /// 탭 관련 리스트 테스트 (CommonMark 명세 Section 2.2 Tabs)
+    #[rstest]
+    // Example 4: 탭으로 continuation paragraph 인덴트
+    #[case("  - foo\n\n\tbar", vec![BlockNode::bullet_list(false, vec![
+        ListItemNode::new(vec![
+            BlockNode::paragraph(vec![InlineNode::text("foo")]),
+            BlockNode::paragraph(vec![InlineNode::text("bar")]),
+        ]),
+    ])])]
+    // Example 5: 탭 2개로 인덴트 → list item 내 code block
+    #[case("- foo\n\n\t\tbar", vec![BlockNode::bullet_list(false, vec![
+        ListItemNode::new(vec![
+            BlockNode::paragraph(vec![InlineNode::text("foo")]),
+            BlockNode::code_block(None, "  bar"),
+        ]),
+    ])])]
+    // Example 7: 대시 + 탭 2개 → list item 내 code block
+    #[case("-\t\tfoo", vec![BlockNode::bullet_list(true, vec![
+        ListItemNode::new(vec![
+            BlockNode::code_block(None, "  foo"),
+        ]),
+    ])])]
+    // Example 9: 탭으로 중첩 리스트 인덴트
+    #[case(" - foo\n   - bar\n\t - baz", vec![BlockNode::bullet_list(true, vec![
+        ListItemNode::new(vec![
+            BlockNode::paragraph(vec![InlineNode::text("foo")]),
+            BlockNode::bullet_list(true, vec![
+                ListItemNode::new(vec![
+                    BlockNode::paragraph(vec![InlineNode::text("bar")]),
+                    BlockNode::bullet_list(true, vec![
+                        ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("baz")])]),
+                    ]),
+                ]),
+            ]),
+        ]),
+    ])])]
+    #[ignore = "탭 처리 미지원"]
+    fn test_list_tabs(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
     }
 }
