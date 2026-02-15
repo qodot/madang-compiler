@@ -343,6 +343,53 @@ mod tests {
         }
     }
 
+    // Example 99: list followed by --- → list + thematic break (not setext)
+    #[test]
+    fn example_99() {
+        let doc = parse("- foo\n-----\n");
+        assert_eq!(doc.children.len(), 2);
+        assert!(matches!(&doc.children[0], BlockNode::List(_)));
+        assert!(matches!(&doc.children[1], BlockNode::ThematicBreak(_)));
+    }
+
+    // Example 103: blank line prevents setext
+    #[test]
+    fn example_103() {
+        let doc = parse("Foo\n\nbar\n---\nbaz\n");
+        assert_eq!(doc.children.len(), 3);
+        assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
+        assert!(matches!(&doc.children[1], BlockNode::Heading(_)));
+        assert!(matches!(&doc.children[2], BlockNode::Paragraph(_)));
+    }
+
+    // Example 104: multiline paragraph + thematic break
+    #[test]
+    fn example_104() {
+        let doc = parse("Foo\nbar\n\n---\n\nbaz\n");
+        assert_eq!(doc.children.len(), 3);
+        assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
+        assert!(matches!(&doc.children[1], BlockNode::ThematicBreak(_)));
+        assert!(matches!(&doc.children[2], BlockNode::Paragraph(_)));
+    }
+
+    // Example 105: paragraph + thematic break (* * *) + paragraph
+    #[test]
+    fn example_105() {
+        let doc = parse("Foo\nbar\n* * *\nbaz\n");
+        assert_eq!(doc.children.len(), 3);
+        assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
+        assert!(matches!(&doc.children[1], BlockNode::ThematicBreak(_)));
+        assert!(matches!(&doc.children[2], BlockNode::Paragraph(_)));
+    }
+
+    // Example 106: escaped --- in paragraph continuation
+    #[test]
+    fn example_106() {
+        let doc = parse("Foo\nbar\n\\---\nbaz\n");
+        assert_eq!(doc.children.len(), 1);
+        assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
+    }
+
     // Example 76: escaped # in closing sequence
     #[test]
     fn example_76() {
