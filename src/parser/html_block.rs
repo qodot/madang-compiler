@@ -683,7 +683,7 @@ mod tests {
     // Example 168: <del>*foo*</del> — tag not alone on line → NOT Type 7, treated as paragraph
     #[case(
         "<del>*foo*</del>",
-        vec![BlockNode::paragraph(vec![InlineNode::text("<del>*foo*</del>")])]
+        vec![BlockNode::paragraph(vec![InlineNode::raw_html("<del>"), InlineNode::text("*foo*"), InlineNode::raw_html("</del>")])]
     )]
     fn test_html_block_type7(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);

@@ -73,12 +73,29 @@ impl AutolinkNode {
     }
 }
 
+/// Raw HTML (인라인) 노드
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawHtmlNode {
+    pub content: String,
+}
+
+impl Node for RawHtmlNode {}
+
+impl RawHtmlNode {
+    pub fn new(content: &str) -> Self {
+        Self {
+            content: content.to_string(),
+        }
+    }
+}
+
 /// 인라인 노드 enum
 #[derive(Debug, Clone, PartialEq)]
 pub enum InlineNode {
     Text(TextNode),
     CodeSpan(CodeSpanNode),
     Autolink(AutolinkNode),
+    RawHtml(RawHtmlNode),
     HardBreak,
     SoftBreak,
     // 향후: Emphasis, Strong, Link, Image 등
@@ -105,6 +122,11 @@ impl InlineNode {
     #[cfg(test)]
     pub fn autolink_email(email: &str) -> Self {
         InlineNode::Autolink(AutolinkNode::email(email))
+    }
+
+    #[cfg(test)]
+    pub fn raw_html(content: &str) -> Self {
+        InlineNode::RawHtml(RawHtmlNode::new(content))
     }
 }
 
