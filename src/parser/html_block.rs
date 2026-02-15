@@ -721,7 +721,7 @@ mod tests {
         "<table><tr><td>\n<pre>\n**Hello**,\n\n_world_.\n</pre>\n</td></tr></table>",
         vec![
             BlockNode::html_block("<table><tr><td>\n<pre>\n**Hello**,"),
-            BlockNode::paragraph(vec![InlineNode::text("_world_.\n</pre>\n</td></tr></table>")]),
+            BlockNode::paragraph(vec![InlineNode::text("_world_."), InlineNode::SoftBreak, InlineNode::text("</pre>"), InlineNode::SoftBreak, InlineNode::text("</td></tr></table>")]),
         ]
     )]
     // Example 174: HTML block inside blockquote (blockquote 내 HTML block 감지 미구현)

@@ -81,7 +81,7 @@ mod tests {
     // Example 48: 4칸 들여쓰기는 코드 블록
     #[case("    ***", vec![BlockNode::code_block(None, "***")])]
     // Example 49: Paragraph 내 4칸 들여쓰기는 continuation
-    #[case("Foo\n    ***", vec![BlockNode::paragraph(vec![InlineNode::text("Foo\n***")])])]
+    #[case("Foo\n    ***", vec![BlockNode::paragraph(vec![InlineNode::text("Foo"), InlineNode::SoftBreak, InlineNode::text("***")])])]
     // Example 50: 많은 문자
     #[case("_____________________________________", vec![BlockNode::thematic_break()])]
     // Example 51: 공백 사이

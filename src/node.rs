@@ -51,6 +51,8 @@ impl CodeSpanNode {
 pub enum InlineNode {
     Text(TextNode),
     CodeSpan(CodeSpanNode),
+    HardBreak,
+    SoftBreak,
     // 향후: Emphasis, Strong, Link, Image 등
 }
 

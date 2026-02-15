@@ -65,7 +65,7 @@ mod tests {
     ])]
     // Example 304: `14.`는 paragraph 인터럽트 불가 (1로 시작하는 것만 가능)
     #[case("The number of windows in my house is\n14.  The number of doors is 6.", vec![
-        BlockNode::paragraph(vec![InlineNode::text("The number of windows in my house is\n14.  The number of doors is 6.")]),
+        BlockNode::paragraph(vec![InlineNode::text("The number of windows in my house is"), InlineNode::SoftBreak, InlineNode::text("14.  The number of doors is 6.")]),
     ])]
     // Example 305: `1.`은 paragraph 인터럽트 가능
     #[case("The number of windows in my house is\n1.  The number of doors is 6.", vec![
@@ -128,7 +128,7 @@ mod tests {
             ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("a")])]),
             ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("b")])]),
             ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("c")])]),
-            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("d\n- e")])]),
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("d"), InlineNode::SoftBreak, InlineNode::text("- e")])]),
         ])
     ])]
     // Example 314: loose (아이템 간 빈 줄)

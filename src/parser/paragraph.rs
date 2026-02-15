@@ -21,15 +21,15 @@ mod tests {
     // Example 219: 빈 줄로 분리된 두 Paragraph
     #[case("aaa\n\nbbb", vec![BlockNode::paragraph(vec![InlineNode::text("aaa")]), BlockNode::paragraph(vec![InlineNode::text("bbb")])])]
     // Example 220: 여러 줄 Paragraph (soft line break)
-    #[case("aaa\nbbb\n\nccc\nddd", vec![BlockNode::paragraph(vec![InlineNode::text("aaa\nbbb")]), BlockNode::paragraph(vec![InlineNode::text("ccc\nddd")])])]
+    #[case("aaa\nbbb\n\nccc\nddd", vec![BlockNode::paragraph(vec![InlineNode::text("aaa"), InlineNode::SoftBreak, InlineNode::text("bbb")]), BlockNode::paragraph(vec![InlineNode::text("ccc"), InlineNode::SoftBreak, InlineNode::text("ddd")])])]
     // Example 221: 여러 빈 줄로 분리
     #[case("aaa\n\n\nbbb", vec![BlockNode::paragraph(vec![InlineNode::text("aaa")]), BlockNode::paragraph(vec![InlineNode::text("bbb")])])]
     // Example 222: 선행 공백 제거
-    #[case("  aaa\n bbb", vec![BlockNode::paragraph(vec![InlineNode::text("aaa\nbbb")])])]
+    #[case("  aaa\n bbb", vec![BlockNode::paragraph(vec![InlineNode::text("aaa"), InlineNode::SoftBreak, InlineNode::text("bbb")])])]
     // Example 223: 들여쓰기된 continuation lines
-    #[case("aaa\n         bbb\n                                       ccc", vec![BlockNode::paragraph(vec![InlineNode::text("aaa\nbbb\nccc")])])]
+    #[case("aaa\n         bbb\n                                       ccc", vec![BlockNode::paragraph(vec![InlineNode::text("aaa"), InlineNode::SoftBreak, InlineNode::text("bbb"), InlineNode::SoftBreak, InlineNode::text("ccc")])])]
     // Example 224: 3칸 들여쓰기 허용
-    #[case("   aaa\nbbb", vec![BlockNode::paragraph(vec![InlineNode::text("aaa\nbbb")])])]
+    #[case("   aaa\nbbb", vec![BlockNode::paragraph(vec![InlineNode::text("aaa"), InlineNode::SoftBreak, InlineNode::text("bbb")])])]
     // Example 225: 4칸 들여쓰기 → code block + paragraph
     #[case("    aaa\nbbb", vec![BlockNode::code_block(None, "aaa"), BlockNode::paragraph(vec![InlineNode::text("bbb")])])]
     // Example 227: 빈 줄만 있는 문서 — paragraph + heading

@@ -108,7 +108,7 @@ mod tests {
     // Example 112: 들여쓰기된 빈 줄 유지
     #[case("    chunk1\n      \n      chunk2", vec![BlockNode::code_block(None, "chunk1\n  \n  chunk2")])]
     // Example 113: Paragraph 인터럽트 불가 - 빈 줄 없이 4칸 들여쓰기는 Paragraph 일부
-    #[case("Foo\n    bar", vec![BlockNode::paragraph(vec![InlineNode::text("Foo\nbar")])])]
+    #[case("Foo\n    bar", vec![BlockNode::paragraph(vec![InlineNode::text("Foo"), InlineNode::SoftBreak, InlineNode::text("bar")])])]
     // Example 114: 코드 블록 후 4칸 미만 줄은 새 Paragraph
     #[case("    foo\nbar", vec![BlockNode::code_block(None, "foo"), BlockNode::paragraph(vec![InlineNode::text("bar")])])]
     // Example 115: heading + code block + setext heading + code block + thematic break
