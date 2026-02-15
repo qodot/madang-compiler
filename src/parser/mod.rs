@@ -273,6 +273,7 @@ fn parse_block_simple(block: &str) -> BlockNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::node::InlineNode;
 
     #[test]
     fn parse_empty_string() {
@@ -419,5 +420,147 @@ mod tests {
         } else {
             panic!("Expected list");
         }
+    }
+
+    // Example 16: backslash escape → hard break
+    #[test]
+    fn example_16() {
+        let doc = parse("foo\\\nbar\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert!(p.children.iter().any(|c| matches!(c, InlineNode::HardBreak)));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 18: indented code block (escapes not processed)
+    #[test]
+    fn example_18() {
+        let doc = parse("    \\[\\]\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::CodeBlock(cb) = &doc.children[0] {
+            assert_eq!(cb.content, "\\[\\]");
+        } else {
+            panic!("Expected code block");
+        }
+    }
+
+    // Example 19: fenced code block
+    #[test]
+    fn example_19() {
+        let doc = parse("~~~\n\\[\\]\n~~~\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::CodeBlock(cb) = &doc.children[0] {
+            assert_eq!(cb.content, "\\[\\]");
+        } else {
+            panic!("Expected code block");
+        }
+    }
+
+    // Example 24: fenced code with info string
+    #[test]
+    fn example_24() {
+        let doc = parse("``` foo\\+bar\nfoo\n```\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::CodeBlock(cb) = &doc.children[0] {
+            assert_eq!(cb.info.as_deref(), Some("foo\\+bar"));
+            assert_eq!(cb.content, "foo");
+        } else {
+            panic!("Expected code block");
+        }
+    }
+
+    // Example 327: code span + text
+    #[test]
+    fn example_327() {
+        let doc = parse("`hi`lo`\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert!(p.children.iter().any(|c| matches!(c, InlineNode::CodeSpan(_))));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 612: plain text (no autolink without angle brackets)
+    #[test]
+    fn example_612() {
+        let doc = parse("foo@bar.example.com\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            // Should NOT be an autolink
+            assert!(!p.children.iter().any(|c| matches!(c, InlineNode::Autolink(_))));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 638: emphasis with hard break inside
+    #[test]
+    fn example_638() {
+        let doc = parse("*foo  \nbar*\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert!(p.children.iter().any(|c| matches!(c, InlineNode::Emphasis(_))));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 639: emphasis with backslash hard break inside
+    #[test]
+    fn example_639() {
+        let doc = parse("*foo\\\nbar*\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert!(p.children.iter().any(|c| matches!(c, InlineNode::Emphasis(_))));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 646: heading with trailing backslash
+    #[test]
+    fn example_646() {
+        let doc = parse("### foo\\\n");
+        assert_eq!(doc.children.len(), 1);
+        assert!(matches!(&doc.children[0], BlockNode::Heading(_)));
+    }
+
+    // Example 647: heading with trailing spaces stripped
+    #[test]
+    fn example_647() {
+        let doc = parse("### foo  \n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Heading(h) = &doc.children[0] {
+            assert_eq!(h.level, 3);
+        } else {
+            panic!("Expected heading");
+        }
+    }
+
+    // Example 650: paragraph with punctuation
+    #[test]
+    fn example_650() {
+        let doc = parse("hello $.;'there\n");
+        assert_eq!(doc.children.len(), 1);
+        assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
+    }
+
+    // Example 651: paragraph with unicode text
+    #[test]
+    fn example_651() {
+        let doc = parse("Foo χρῆν\n");
+        assert_eq!(doc.children.len(), 1);
+        assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
+    }
+
+    // Example 652: paragraph preserving multiple spaces
+    #[test]
+    fn example_652() {
+        let doc = parse("Multiple     spaces\n");
+        assert_eq!(doc.children.len(), 1);
+        assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
     }
 }
