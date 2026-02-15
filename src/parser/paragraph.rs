@@ -33,6 +33,8 @@ mod tests {
     #[case("   aaa\nbbb", vec![BlockNode::paragraph(vec![InlineNode::text("aaa\nbbb")])])]
     // Example 225: 4칸 들여쓰기 → code block + paragraph
     #[case("    aaa\nbbb", vec![BlockNode::code_block(None, "aaa"), BlockNode::paragraph(vec![InlineNode::text("bbb")])])]
+    // Example 227: 빈 줄만 있는 문서 — paragraph + heading
+    #[case("  \n\naaa\n  \n\n# aaa\n\n  ", vec![BlockNode::paragraph(vec![InlineNode::text("aaa")]), BlockNode::heading(1, vec![InlineNode::text("aaa")])])]
     // 추가 케이스
     #[case("hello", vec![BlockNode::paragraph(vec![InlineNode::text("hello")])])]
     #[case("\n\nparagraph", vec![BlockNode::paragraph(vec![InlineNode::text("paragraph")])])]

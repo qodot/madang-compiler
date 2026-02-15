@@ -61,7 +61,7 @@ pub(crate) fn try_start(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::{BlockNode, InlineNode};
+    use crate::node::{BlockNode, InlineNode, ListItemNode};
     use rstest::rstest;
 
     /// try_start 테스트: 성공/실패 케이스 통합
@@ -111,6 +111,14 @@ mod tests {
     #[case("Foo\n    bar", vec![BlockNode::paragraph(vec![InlineNode::text("Foo\nbar")])])]
     // Example 114: 코드 블록 후 4칸 미만 줄은 새 Paragraph
     #[case("    foo\nbar", vec![BlockNode::code_block(None, "foo"), BlockNode::paragraph(vec![InlineNode::text("bar")])])]
+    // Example 115: heading + code block + setext heading + code block + thematic break
+    #[case("# Heading\n    foo\nHeading\n------\n    foo\n----", vec![
+        BlockNode::heading(1, vec![InlineNode::text("Heading")]),
+        BlockNode::code_block(None, "foo"),
+        BlockNode::heading(2, vec![InlineNode::text("Heading")]),
+        BlockNode::code_block(None, "foo"),
+        BlockNode::thematic_break(),
+    ])]
     // Example 116: 8칸 들여쓰기 (4칸 제거 후 4칸 유지)
     #[case("        foo\n    bar", vec![BlockNode::code_block(None, "    foo\nbar")])]
     // Example 117: 앞뒤 빈 줄은 제거됨
@@ -120,5 +128,41 @@ mod tests {
     fn test_code_block_indented(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = crate::parse(input);
         assert_eq!(doc.children, expected);
+    }
+
+    /// list item 내 indented code 관련 — 현재 파서 미지원
+    #[rstest]
+    // Example 108: list item 내 continuation paragraph
+    #[case("  - foo\n\n    bar", vec![BlockNode::bullet_list(false, vec![
+        ListItemNode::new(vec![
+            BlockNode::paragraph(vec![InlineNode::text("foo")]),
+            BlockNode::paragraph(vec![InlineNode::text("bar")]),
+        ]),
+    ])])]
+    // Example 109: ordered list + nested bullet list (loose due to blank line)
+    #[case("1.  foo\n\n    - bar", vec![BlockNode::ordered_list('.', 1, false, vec![
+        ListItemNode::new(vec![
+            BlockNode::paragraph(vec![InlineNode::text("foo")]),
+            BlockNode::bullet_list(true, vec![
+                ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])]),
+            ]),
+        ]),
+    ])])]
+    #[ignore = "list item 내 loose list 판정 미지원"]
+    fn test_code_block_indented_pending(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
+    }
+
+    /// 탭 관련 indented code block 테스트 (CommonMark 명세 Section 2.2 Tabs)
+    #[rstest]
+    // Example 1: 탭으로 인덴트된 코드 블록
+    #[case("\tfoo\tbaz\t\tbim", vec![BlockNode::code_block(None, "foo\tbaz\t\tbim")])]
+    // Example 2: 2칸 공백 + 탭 (탭이 나머지 2칸을 채워 4칸 인덴트)
+    #[case("  \tfoo\tbaz\t\tbim", vec![BlockNode::code_block(None, "foo\tbaz\t\tbim")])]
+    // Example 3: 탭 위치에 따른 정렬 (내부 탭은 그대로 유지)
+    #[case("    a\ta\n    ὐ\ta", vec![BlockNode::code_block(None, "a\ta\nὐ\ta")])]
+    // Example 8: space + tab 혼용 (4칸 space 인덴트 후, 다음 줄은 탭으로 인덴트)
+    #[case("    foo\n\tbar", vec![BlockNode::code_block(None, "foo\nbar")])]
+    #[ignore = "탭 처리 미지원"]
+    fn test_code_block_indented_tabs(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
     }
 }

@@ -66,8 +66,9 @@ mod tests {
     #[case("***", vec![BlockNode::thematic_break()])]
     #[case("---", vec![BlockNode::thematic_break()])]
     #[case("___", vec![BlockNode::thematic_break()])]
-    // Example 44-45: 유효하지 않은 마커 문자 → Paragraph
+    // Example 44: 유효하지 않은 마커 문자 → Paragraph
     #[case("+++", vec![BlockNode::paragraph(vec![InlineNode::text("+++")])])]
+    // Example 45: 유효하지 않은 마커 문자 → Paragraph
     #[case("===", vec![BlockNode::paragraph(vec![InlineNode::text("===")])])]
     // Example 46: 2개는 부족 → Paragraph
     #[case("**", vec![BlockNode::paragraph(vec![InlineNode::text("**")])])]
@@ -110,5 +111,13 @@ mod tests {
     fn test_thematic_break(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
+    }
+
+    /// 탭 관련 thematic break 테스트 (CommonMark 명세 Section 2.2 Tabs)
+    #[rstest]
+    // Example 11: 탭으로 구분된 thematic break 마커
+    #[case("*\t*\t*\t", vec![BlockNode::thematic_break()])]
+    #[ignore = "탭 처리 미지원"]
+    fn test_thematic_break_tabs(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
     }
 }
