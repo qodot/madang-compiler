@@ -18,6 +18,19 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
 
     while pos < raw.len() {
         match bytes[pos] {
+            b'\\' => {
+                match backslash_escape::try_escape(&raw[pos..]) {
+                    Some((escaped_char, consumed)) => {
+                        push_text_char(&mut result, escaped_char);
+                        pos += consumed;
+                    }
+                    None => {
+                        // 이스케이프 안 되면 리터럴 백슬래시
+                        push_text_char(&mut result, '\\');
+                        pos += 1;
+                    }
+                }
+            }
             b'`' => {
                 match code_span::parse_code_span(&raw[pos..]) {
                     Some(cs) => {
@@ -113,11 +126,39 @@ mod tests {
     #[case("`foo", vec![InlineNode::text("`foo")])]
     // Example 349: 첫 ` 매칭 안 됨, ``bar`` 매칭
     #[case("`foo``bar``", vec![InlineNode::text("`foo"), InlineNode::code_span("bar")])]
+    // Example 343: code span 내에서는 이스케이프 안 됨 (< 와 " 는 HTML 인코딩이므로 우리 AST에선 리터럴)
+    #[case("`<a href=\"`\">` ", vec![InlineNode::code_span("<a href=\""), InlineNode::text("\">` ")])]
     // code span 앞뒤에 텍스트
     #[case("hello `world` bye", vec![InlineNode::text("hello "), InlineNode::code_span("world"), InlineNode::text(" bye")])]
     // 여러 code span
     #[case("`a` and `b`", vec![InlineNode::code_span("a"), InlineNode::text(" and "), InlineNode::code_span("b")])]
     fn test_parse_inlines_code_span(#[case] input: &str, #[case] expected: Vec<InlineNode>) {
+        assert_eq!(parse_inlines(input), expected);
+    }
+
+    // =========================================================================
+    // parse_inlines — backslash escape 통합 테스트
+    // =========================================================================
+
+    #[rstest]
+    // Example 12: 모든 ASCII 구두점 이스케이프
+    #[case(
+        "\\!\\\"\\#\\$\\%\\&\\'\\(\\)\\*\\+\\,\\-\\.\\/\\:\\;\\<\\=\\>\\?\\@\\[\\\\\\]\\^\\_\\`\\{\\|\\}\\~",
+        vec![InlineNode::text("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")]
+    )]
+    // Example 13: 구두점이 아닌 문자는 이스케이프 안 됨
+    #[case("\\A\\a\\ \\3", vec![InlineNode::text("\\A\\a\\ \\3")])]
+    // Example 14 (부분): \*는 리터럴 * (emphasis 아님)
+    #[case("\\*not emphasized*", vec![InlineNode::text("*not emphasized*")])]
+    // Example 14 (부분): \`는 리터럴 ` (code span 아님)
+    #[case("\\`not code`", vec![InlineNode::text("`not code`")])]
+    // Example 15 (부분): \\는 리터럴 \ 
+    #[case("\\\\hello", vec![InlineNode::text("\\hello")])]
+    // Example 17: code span 내에서는 이스케이프 안 됨
+    #[case("`` \\[\\` ``", vec![InlineNode::code_span("\\[\\`")])]
+    // 이스케이프와 code span 혼합
+    #[case("\\*`code`\\*", vec![InlineNode::text("*"), InlineNode::code_span("code"), InlineNode::text("*")])]
+    fn test_parse_inlines_backslash_escape(#[case] input: &str, #[case] expected: Vec<InlineNode>) {
         assert_eq!(parse_inlines(input), expected);
     }
 }
