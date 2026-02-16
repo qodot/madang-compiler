@@ -165,6 +165,15 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
 
 /// 인접한 Text 노드를 합친다
 fn merge_adjacent_text(nodes: &mut Vec<InlineNode>) {
+    // 재귀적으로 children도 처리
+    for node in nodes.iter_mut() {
+        match node {
+            InlineNode::Emphasis(e) => merge_adjacent_text(&mut e.children),
+            InlineNode::Strong(s) => merge_adjacent_text(&mut s.children),
+            _ => {}
+        }
+    }
+    // 인접한 Text 노드 합치기
     let mut i = 0;
     while i + 1 < nodes.len() {
         if let (InlineNode::Text(_), InlineNode::Text(_)) = (&nodes[i], &nodes[i + 1]) {
@@ -459,9 +468,7 @@ mod tests {
     }
 
     // Example 376: _foo_bar_baz_
-    // FIXME: underscore delimiter 무시 규칙: _foo_bar_baz_ 내부 _ 리터럴 처리 실패
     #[test]
-    #[ignore]
     fn example_376() {
         assert_eq!(parse_inlines("_foo_bar_baz_"), vec![InlineNode::emphasis(vec![InlineNode::text("foo_bar_baz")])]);
     }
@@ -593,9 +600,7 @@ mod tests {
     }
 
     // Example 402: __foo__bar__baz__
-    // FIXME: underscore delimiter 무시 규칙: __foo__bar__baz__ 내부 __ 리터럴 처리 실패
     #[test]
-    #[ignore]
     fn example_402() {
         assert_eq!(parse_inlines("__foo__bar__baz__"), vec![InlineNode::strong(vec![InlineNode::text("foo__bar__baz")])]);
     }
@@ -625,17 +630,13 @@ mod tests {
     }
 
     // Example 408: __foo_ bar_
-    // FIXME: nested emphasis: __foo_ bar_ → em>em 처리 실패 (delimiter length mismatch)
     #[test]
-    #[ignore]
     fn example_408() {
         assert_eq!(parse_inlines("__foo_ bar_"), vec![InlineNode::emphasis(vec![InlineNode::emphasis(vec![InlineNode::text("foo")]), InlineNode::text(" bar")])]);
     }
 
     // Example 409: *foo *bar**
-    // FIXME: nested emphasis: *foo *bar** → em 내부 em 처리 실패
     #[test]
-    #[ignore]
     fn example_409() {
         assert_eq!(parse_inlines("*foo *bar**"), vec![InlineNode::emphasis(vec![InlineNode::text("foo "), InlineNode::emphasis(vec![InlineNode::text("bar")])])]);
     }
@@ -647,49 +648,37 @@ mod tests {
     }
 
     // Example 412: *foo**bar*
-    // FIXME: delimiter 소비 규칙: *foo**bar* → emphasis 내부 **가 리터럴이어야 함
     #[test]
-    #[ignore]
     fn example_412() {
         assert_eq!(parse_inlines("*foo**bar*"), vec![InlineNode::emphasis(vec![InlineNode::text("foo**bar")])]);
     }
 
     // Example 413: ***foo** bar*
-    // FIXME: delimiter 분할: ***foo** bar* → em(strong(foo), bar) 처리 실패
     #[test]
-    #[ignore]
     fn example_413() {
         assert_eq!(parse_inlines("***foo** bar*"), vec![InlineNode::emphasis(vec![InlineNode::strong(vec![InlineNode::text("foo")]), InlineNode::text(" bar")])]);
     }
 
     // Example 414: *foo **bar***
-    // FIXME: delimiter 분할: *foo **bar*** → em(foo, strong(bar)) 처리 실패
     #[test]
-    #[ignore]
     fn example_414() {
         assert_eq!(parse_inlines("*foo **bar***"), vec![InlineNode::emphasis(vec![InlineNode::text("foo "), InlineNode::strong(vec![InlineNode::text("bar")])])]);
     }
 
     // Example 415: *foo**bar***
-    // FIXME: delimiter 분할: *foo**bar*** → em(foo, strong(bar)) 처리 실패
     #[test]
-    #[ignore]
     fn example_415() {
         assert_eq!(parse_inlines("*foo**bar***"), vec![InlineNode::emphasis(vec![InlineNode::text("foo"), InlineNode::strong(vec![InlineNode::text("bar")])])]);
     }
 
     // Example 416: foo***bar***baz
-    // FIXME: delimiter 분할: foo***bar***baz → em(strong(bar)) 처리 실패
     #[test]
-    #[ignore]
     fn example_416() {
         assert_eq!(parse_inlines("foo***bar***baz"), vec![InlineNode::text("foo"), InlineNode::emphasis(vec![InlineNode::strong(vec![InlineNode::text("bar")])]), InlineNode::text("baz")]);
     }
 
     // Example 417: foo******bar*********baz
-    // FIXME: delimiter 분할: 다중 *** 처리 실패
     #[test]
-    #[ignore]
     fn example_417() {
         assert_eq!(parse_inlines("foo******bar*********baz"), vec![InlineNode::text("foo"), InlineNode::strong(vec![InlineNode::strong(vec![InlineNode::strong(vec![InlineNode::text("bar")])])]), InlineNode::text("***baz")]);
     }
@@ -731,17 +720,13 @@ mod tests {
     }
 
     // Example 426: ____foo__ bar__
-    // FIXME: delimiter 분할: ____foo__ bar__ → strong(strong(foo), bar) 처리 실패
     #[test]
-    #[ignore]
     fn example_426() {
         assert_eq!(parse_inlines("____foo__ bar__"), vec![InlineNode::strong(vec![InlineNode::strong(vec![InlineNode::text("foo")]), InlineNode::text(" bar")])]);
     }
 
     // Example 427: **foo **bar****
-    // FIXME: delimiter 분할: **foo **bar**** → strong(foo, strong(bar)) 처리 실패
     #[test]
-    #[ignore]
     fn example_427() {
         assert_eq!(parse_inlines("**foo **bar****"), vec![InlineNode::strong(vec![InlineNode::text("foo "), InlineNode::strong(vec![InlineNode::text("bar")])])]);
     }
@@ -759,17 +744,13 @@ mod tests {
     }
 
     // Example 430: ***foo* bar**
-    // FIXME: delimiter 분할: ***foo* bar** → strong(em(foo), bar) 처리 실패
     #[test]
-    #[ignore]
     fn example_430() {
         assert_eq!(parse_inlines("***foo* bar**"), vec![InlineNode::strong(vec![InlineNode::emphasis(vec![InlineNode::text("foo")]), InlineNode::text(" bar")])]);
     }
 
     // Example 431: **foo *bar***
-    // FIXME: delimiter 분할: **foo *bar*** → strong(foo, em(bar)) 처리 실패
     #[test]
-    #[ignore]
     fn example_431() {
         assert_eq!(parse_inlines("**foo *bar***"), vec![InlineNode::strong(vec![InlineNode::text("foo "), InlineNode::emphasis(vec![InlineNode::text("bar")])])]);
     }
@@ -961,57 +942,43 @@ mod tests {
     }
 
     // Example 464: ****foo****
-    // FIXME: 다중 delimiter: ****foo**** → strong(strong(foo)) 처리 실패
     #[test]
-    #[ignore]
     fn example_464() {
         assert_eq!(parse_inlines("****foo****"), vec![InlineNode::strong(vec![InlineNode::strong(vec![InlineNode::text("foo")])])]);
     }
 
     // Example 465: ____foo____
-    // FIXME: 다중 delimiter: ____foo____ → strong(strong(foo)) 처리 실패
     #[test]
-    #[ignore]
     fn example_465() {
         assert_eq!(parse_inlines("____foo____"), vec![InlineNode::strong(vec![InlineNode::strong(vec![InlineNode::text("foo")])])]);
     }
 
     // Example 466: ******foo******
-    // FIXME: 다중 delimiter: ******foo****** → strong(strong(strong(foo))) 처리 실패
     #[test]
-    #[ignore]
     fn example_466() {
         assert_eq!(parse_inlines("******foo******"), vec![InlineNode::strong(vec![InlineNode::strong(vec![InlineNode::strong(vec![InlineNode::text("foo")])])])]);
     }
 
     // Example 467: ***foo***
-    // FIXME: 다중 delimiter: ***foo*** → em(strong(foo)) 처리 실패
     #[test]
-    #[ignore]
     fn example_467() {
         assert_eq!(parse_inlines("***foo***"), vec![InlineNode::emphasis(vec![InlineNode::strong(vec![InlineNode::text("foo")])])]);
     }
 
     // Example 468: _____foo_____
-    // FIXME: 다중 delimiter: _____foo_____ → em(strong(strong(foo))) 처리 실패
     #[test]
-    #[ignore]
     fn example_468() {
         assert_eq!(parse_inlines("_____foo_____"), vec![InlineNode::emphasis(vec![InlineNode::strong(vec![InlineNode::strong(vec![InlineNode::text("foo")])])])]);
     }
 
     // Example 469: *foo _bar* baz_
-    // FIXME: mixed delimiter overlap: *foo _bar* baz_ → 다른 종류 delimiter 겹침 처리
     #[test]
-    #[ignore]
     fn example_469() {
         assert_eq!(parse_inlines("*foo _bar* baz_"), vec![InlineNode::emphasis(vec![InlineNode::text("foo _bar")]), InlineNode::text(" baz_")]);
     }
 
     // Example 470: *foo __bar *baz bim__ bam*
-    // FIXME: mixed delimiter overlap: *foo __bar *baz bim__ bam* → 내부 * 리터럴 처리
     #[test]
-    #[ignore]
     fn example_470() {
         assert_eq!(parse_inlines("*foo __bar *baz bim__ bam*"), vec![InlineNode::emphasis(vec![InlineNode::text("foo "), InlineNode::strong(vec![InlineNode::text("bar *baz bim")]), InlineNode::text(" bam")])]);
     }
