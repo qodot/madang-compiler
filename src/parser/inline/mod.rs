@@ -1838,10 +1838,7 @@ mod tests {
         );
     }
 
-    // Example 573: reference image
-    #[test]
-    #[ignore] // link reference definition 미구현
-    fn example_573() {}
+    // Example 573: reference image → moved to parser/mod.rs (needs parse() for ref_map)
 
     // Example 574: ![foo ![bar](/url)](/url2) — nested image in alt
     #[test]
@@ -1870,15 +1867,7 @@ mod tests {
         );
     }
 
-    // Example 576: reference image
-    #[test]
-    #[ignore] // link reference definition 미구현
-    fn example_576() {}
-
-    // Example 577: reference image
-    #[test]
-    #[ignore] // link reference definition 미구현
-    fn example_577() {}
+    // Example 576-577: reference images → moved to parser/mod.rs (needs parse() for ref_map)
 
     // Example 578: ![foo](train.jpg)
     #[test]
@@ -1916,45 +1905,7 @@ mod tests {
         );
     }
 
-    // Example 582: reference image
-    #[test]
-    #[ignore] // link reference definition 미구현
-    fn example_582() {}
-
-    // Example 583: reference image
-    #[test]
-    #[ignore] // link reference definition 미구현
-    fn example_583() {}
-
-    // Example 584: reference image
-    #[test]
-    #[ignore] // link reference definition 미구현
-    fn example_584() {}
-
-    // Example 585: reference image
-    #[test]
-    #[ignore] // link reference definition 미구현
-    fn example_585() {}
-
-    // Example 586: reference image
-    #[test]
-    #[ignore] // link reference definition 미구현
-    fn example_586() {}
-
-    // Example 587: reference image
-    #[test]
-    #[ignore] // link reference definition 미구현
-    fn example_587() {}
-
-    // Example 588: reference image
-    #[test]
-    #[ignore] // link reference definition 미구현
-    fn example_588() {}
-
-    // Example 589: reference image
-    #[test]
-    #[ignore] // link reference definition 미구현
-    fn example_589() {}
+    // Examples 582-589: reference images → moved to parser/mod.rs (needs parse() for ref_map)
 
     // Example 590: ![[foo]] — not a valid image syntax
     #[test]
@@ -1965,10 +1916,7 @@ mod tests {
         );
     }
 
-    // Example 591: reference image
-    #[test]
-    #[ignore] // link reference definition 미구현
-    fn example_591() {}
+    // Example 591: reference image → moved to parser/mod.rs (needs parse() for ref_map)
 
     // Example 592: !\[foo] — escaped ! before [
     #[test]
