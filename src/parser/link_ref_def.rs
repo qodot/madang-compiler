@@ -115,8 +115,8 @@ fn try_parse_definition(input: &str) -> Option<(LinkRefDef, usize)> {
     Some((
         LinkRefDef {
             label,
-            destination,
-            title,
+            destination: super::inline::entity::resolve_entities(&destination),
+            title: title.map(|t| super::inline::entity::resolve_entities(&t)),
         },
         pos,
     ))
