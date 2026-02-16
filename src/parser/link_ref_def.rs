@@ -84,6 +84,7 @@ fn try_parse_definition(input: &str) -> Option<(LinkRefDef, usize)> {
     pos += dest_consumed;
 
     // optional title (requires at least one whitespace before)
+    let pos_before_title = pos;
     let ws_before_title = skip_spaces_and_optional_newline(&input[pos..]);
     let title = if ws_before_title > 0 {
         pos += ws_before_title;
@@ -104,13 +105,28 @@ fn try_parse_definition(input: &str) -> Option<(LinkRefDef, usize)> {
 
     // 줄 끝이어야 함 (trailing spaces + newline or EOF)
     let trailing = count_leading(bytes, pos, b' ');
-    pos += trailing;
-    if pos < input.len() && bytes[pos] != b'\n' {
+    if pos + trailing < input.len() && bytes[pos + trailing] != b'\n' {
+        // title이 있었다면 title을 되돌리고 title 없이 재시도
+        if title.is_some() {
+            pos = pos_before_title;
+            // destination 뒤에서 줄 끝 체크
+            let trailing2 = count_leading(bytes, pos, b' ');
+            if pos + trailing2 < input.len() && bytes[pos + trailing2] != b'\n' {
+                return None;
+            }
+            pos += trailing2;
+            return Some((
+                LinkRefDef {
+                    label,
+                    destination: super::inline::entity::resolve_entities(&destination),
+                    title: None,
+                },
+                pos,
+            ));
+        }
         return None;
     }
-    if pos < input.len() && bytes[pos] == b'\n' {
-        // newline은 consumed에 포함하지 않음 (caller가 처리)
-    }
+    pos += trailing;
 
     Some((
         LinkRefDef {
@@ -123,7 +139,7 @@ fn try_parse_definition(input: &str) -> Option<(LinkRefDef, usize)> {
 }
 
 /// [label] 파싱: `[` ~ `]`, 999자 제한, `[` 불허
-fn parse_label(input: &str) -> Option<(String, usize)> {
+pub fn parse_label(input: &str) -> Option<(String, usize)> {
     let bytes = input.as_bytes();
     if bytes.is_empty() || bytes[0] != b'[' {
         return None;

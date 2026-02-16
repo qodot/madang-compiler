@@ -384,18 +384,16 @@ fn try_reference_link(
 
     // 패턴 1: `][ref]` — full reference
     if bytes.len() > 1 && bytes[1] == b'[' {
-        // `]` 다음 `[ref]` 찾기
-        if let Some(close) = input[2..].find(']') {
-            let ref_label = &input[2..2 + close];
-            if !ref_label.is_empty() {
-                let normalized = crate::parser::link_ref_def::normalize_label(ref_label);
+        if let Some((ref_label, label_consumed)) = crate::parser::link_ref_def::parse_label(&input[1..]) {
+            if !ref_label.trim().is_empty() {
+                let normalized = crate::parser::link_ref_def::normalize_label(&ref_label);
                 if let Some((dest, title)) = ref_map.get(&normalized) {
                     let r = if bracket.image {
                         RefLinkResult::Image { destination: dest.clone(), title: title.clone() }
                     } else {
                         RefLinkResult::Link { destination: dest.clone(), title: title.clone() }
                     };
-                    return Some((r, 1 + 1 + close + 1)); // ] + [ + ref + ]
+                    return Some((r, 1 + label_consumed)); // ] + [ref]
                 }
             }
         }
