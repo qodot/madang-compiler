@@ -11,13 +11,14 @@ mod heading;
 mod heading_setext;
 mod helpers;
 mod html_block;
+pub(crate) mod link_ref_def;
 pub(crate) mod inline;
 mod list;
 mod list_item;
 mod paragraph;
 mod thematic_break;
 
-use crate::node::{BlockNode, CodeBlockNode, DocumentNode};
+use crate::node::{BlockNode, CodeBlockNode, DocumentNode, ParagraphNode};
 use code_block_fenced::{parse as parse_code_block_fenced, CodeBlockFencedOk};
 use code_block_indented::try_start as try_start_code_block_indented;
 use context::{
@@ -43,6 +44,17 @@ pub fn parse(input: &str) -> DocumentNode {
 
     // 마지막 컨텍스트 마무리
     let children = finalize_context(final_context, children);
+
+    // Pass 2: link reference definitions 추출 및 인라인 재파싱
+    let mut ref_map = link_ref_def::RefMap::new();
+    let children = extract_link_ref_defs(children, &mut ref_map);
+
+    // Pass 3: reference link 해석 (ref_map이 비어있지 않으면)
+    let children = if !ref_map.is_empty() {
+        resolve_references(children, &ref_map)
+    } else {
+        children
+    };
 
     DocumentNode::new(children)
 }
@@ -270,6 +282,87 @@ fn parse_block_simple(block: &str) -> BlockNode {
     paragraph::parse(block.trim())
 }
 
+/// Pass 2: 모든 paragraph에서 link reference definitions를 추출한다.
+/// - link ref def가 paragraph 시작에 있으면 추출하고 남은 텍스트로 재파싱
+/// - paragraph가 완전히 link ref def로만 구성되면 제거
+fn extract_link_ref_defs(
+    children: Vec<BlockNode>,
+    ref_map: &mut link_ref_def::RefMap,
+) -> Vec<BlockNode> {
+    children
+        .into_iter()
+        .filter_map(|node| match node {
+            BlockNode::Paragraph(para) => {
+                if let Some(raw) = &para.raw_text {
+                    let remaining = link_ref_def::extract_definitions(raw, ref_map);
+                    if remaining.trim().is_empty() {
+                        None // paragraph 전체가 link ref def
+                    } else if remaining != *raw {
+                        // 일부가 link ref def였으므로 남은 텍스트로 재파싱
+                        Some(BlockNode::Paragraph(ParagraphNode::with_raw_text(
+                            inline::parse_inlines(&remaining),
+                            &remaining,
+                        )))
+                    } else {
+                        Some(BlockNode::Paragraph(para))
+                    }
+                } else {
+                    Some(BlockNode::Paragraph(para))
+                }
+            }
+            BlockNode::Blockquote(mut bq) => {
+                bq.children = extract_link_ref_defs(bq.children, ref_map);
+                Some(BlockNode::Blockquote(bq))
+            }
+            BlockNode::List(mut list) => {
+                for item in list.children.iter_mut() {
+                    item.children = extract_link_ref_defs(
+                        std::mem::take(&mut item.children),
+                        ref_map,
+                    );
+                }
+                Some(BlockNode::List(list))
+            }
+            other => Some(other),
+        })
+        .collect()
+}
+
+/// Pass 3: reference link/image를 해석한다.
+/// raw_text가 있는 paragraph/heading을 ref_map과 함께 인라인 재파싱
+fn resolve_references(children: Vec<BlockNode>, ref_map: &link_ref_def::RefMap) -> Vec<BlockNode> {
+    children
+        .into_iter()
+        .map(|node| match node {
+            BlockNode::Paragraph(mut para) => {
+                if let Some(raw) = &para.raw_text {
+                    para.children = inline::parse_inlines_with_refs(raw, Some(ref_map));
+                }
+                BlockNode::Paragraph(para)
+            }
+            BlockNode::Heading(mut h) => {
+                // heading은 raw_text가 없으므로 children에서 재귀 처리
+                // TODO: heading에도 raw_text 보존 필요
+                BlockNode::Heading(h)
+            }
+            BlockNode::Blockquote(mut bq) => {
+                bq.children = resolve_references(bq.children, ref_map);
+                BlockNode::Blockquote(bq)
+            }
+            BlockNode::List(mut list) => {
+                for item in list.children.iter_mut() {
+                    item.children = resolve_references(
+                        std::mem::take(&mut item.children),
+                        ref_map,
+                    );
+                }
+                BlockNode::List(list)
+            }
+            other => other,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,6 +372,21 @@ mod tests {
     fn parse_empty_string() {
         let doc = parse("");
         assert_eq!(doc.children.len(), 0);
+    }
+
+    // Example 192: basic link reference definition
+    #[test]
+    fn example_192() {
+        let doc = parse("[foo]: /url \"title\"\n\n[foo]");
+        println!("{:#?}", doc);
+        assert_eq!(doc.children.len(), 1); // link ref def removed, only paragraph with link
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url", Some("title"))
+            ]);
+        } else {
+            panic!("Expected paragraph, got {:?}", doc.children[0]);
+        }
     }
 
     // Example 57: list → thematic break → list

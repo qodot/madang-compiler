@@ -28,6 +28,10 @@ struct BracketEntry {
 ///
 /// 블록 파서가 추출한 텍스트를 받아서 인라인 구조를 파싱합니다.
 pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
+    parse_inlines_with_refs(raw, None)
+}
+
+pub fn parse_inlines_with_refs(raw: &str, ref_map: Option<&crate::parser::link_ref_def::RefMap>) -> Vec<InlineNode> {
     let mut result = Vec::new();
     let mut delimiters: Vec<DelimiterRun> = Vec::new();
     let mut brackets: Vec<BracketEntry> = Vec::new();
@@ -231,6 +235,51 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
                             continue;
                         }
                     }
+                    // inline link 실패 → reference link 시도
+                    if bracket.active {
+                        if let Some(rm) = ref_map {
+                            if let Some((ref_node, consumed)) = try_reference_link(
+                                &raw[pos..], &result, &delimiters, &bracket, rm,
+                            ) {
+                                let bracket_pos = bracket.node_index;
+                                // delimiter 분할
+                                let split_idx = delimiters
+                                    .iter()
+                                    .position(|d| d.position > bracket_pos)
+                                    .unwrap_or(delimiters.len());
+                                let child_delims: Vec<DelimiterRun> = delimiters
+                                    .split_off(split_idx)
+                                    .into_iter()
+                                    .map(|mut d| {
+                                        d.position -= bracket_pos + 1;
+                                        d
+                                    })
+                                    .collect();
+
+                                let children: Vec<InlineNode> = result
+                                    .drain((bracket_pos + 1)..)
+                                    .collect();
+                                result.pop();
+
+                                let children = if !child_delims.is_empty() {
+                                    emphasis::process_emphasis(children, child_delims)
+                                } else {
+                                    children
+                                };
+
+                                result.push(ref_node.with_children(children));
+                                pos += consumed;
+                                force_new_text = true;
+
+                                if !bracket.image {
+                                    for b in brackets.iter_mut() {
+                                        b.active = false;
+                                    }
+                                }
+                                continue;
+                            }
+                        }
+                    }
                     // 매칭 실패 → `]`를 텍스트로
                     push_text_char(&mut result, ']');
                     pos += 1;
@@ -269,6 +318,103 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
 }
 
 /// 인접한 Text 노드를 합친다
+/// Reference link 해석 결과 (children은 나중에 설정)
+enum RefLinkResult {
+    Link { destination: String, title: Option<String> },
+    Image { destination: String, title: Option<String> },
+}
+
+impl RefLinkResult {
+    fn with_children(self, children: Vec<InlineNode>) -> InlineNode {
+        match self {
+            RefLinkResult::Link { destination, title } => {
+                InlineNode::Link(LinkNode::new(children, &destination, title.as_deref()))
+            }
+            RefLinkResult::Image { destination, title } => {
+                InlineNode::Image(ImageNode::new(children, &destination, title.as_deref()))
+            }
+        }
+    }
+}
+
+/// reference link를 시도한다.
+/// `]` 위치에서 시작, `][ref]`, `][]`, `]` (shortcut) 패턴 체크
+/// 반환: Some((RefLinkResult, consumed_bytes)) — consumed는 `]` 포함
+fn try_reference_link(
+    input: &str, // `]`부터 시작
+    result: &[InlineNode],
+    _delimiters: &[DelimiterRun],
+    bracket: &BracketEntry,
+    ref_map: &crate::parser::link_ref_def::RefMap,
+) -> Option<(RefLinkResult, usize)> {
+    let bytes = input.as_bytes();
+    let bracket_pos = bracket.node_index;
+
+    // label 텍스트 추출 (bracket 다음 ~ 현재 result 끝)
+    let label_text = extract_label_from_nodes(&result[(bracket_pos + 1)..]);
+
+    // 패턴 1: `][ref]` — full reference
+    if bytes.len() > 1 && bytes[1] == b'[' {
+        // `]` 다음 `[ref]` 찾기
+        if let Some(close) = input[2..].find(']') {
+            let ref_label = &input[2..2 + close];
+            if !ref_label.is_empty() {
+                let normalized = crate::parser::link_ref_def::normalize_label(ref_label);
+                if let Some((dest, title)) = ref_map.get(&normalized) {
+                    let r = if bracket.image {
+                        RefLinkResult::Image { destination: dest.clone(), title: title.clone() }
+                    } else {
+                        RefLinkResult::Link { destination: dest.clone(), title: title.clone() }
+                    };
+                    return Some((r, 1 + 1 + close + 1)); // ] + [ + ref + ]
+                }
+            }
+        }
+
+        // `][]` — collapsed reference
+        if bytes.len() > 2 && bytes[1] == b'[' && bytes[2] == b']' {
+            let normalized = crate::parser::link_ref_def::normalize_label(&label_text);
+            if let Some((dest, title)) = ref_map.get(&normalized) {
+                let r = if bracket.image {
+                    RefLinkResult::Image { destination: dest.clone(), title: title.clone() }
+                } else {
+                    RefLinkResult::Link { destination: dest.clone(), title: title.clone() }
+                };
+                return Some((r, 3)); // ][]
+            }
+        }
+    }
+
+    // 패턴 3: `]` — shortcut reference
+    let normalized = crate::parser::link_ref_def::normalize_label(&label_text);
+    if let Some((dest, title)) = ref_map.get(&normalized) {
+        let r = if bracket.image {
+            RefLinkResult::Image { destination: dest.clone(), title: title.clone() }
+        } else {
+            RefLinkResult::Link { destination: dest.clone(), title: title.clone() }
+        };
+        return Some((r, 1)); // just ]
+    }
+
+    None
+}
+
+/// 인라인 노드 배열에서 텍스트 내용만 추출
+fn extract_label_from_nodes(nodes: &[InlineNode]) -> String {
+    let mut text = String::new();
+    for node in nodes {
+        match node {
+            InlineNode::Text(t) => text.push_str(&t.0),
+            InlineNode::CodeSpan(c) => text.push_str(&c.0),
+            InlineNode::Emphasis(e) => text.push_str(&extract_label_from_nodes(&e.children)),
+            InlineNode::Strong(s) => text.push_str(&extract_label_from_nodes(&s.children)),
+            InlineNode::SoftBreak | InlineNode::HardBreak => text.push(' '),
+            _ => {}
+        }
+    }
+    text
+}
+
 fn merge_adjacent_text(nodes: &mut Vec<InlineNode>) {
     // 재귀적으로 children도 처리
     for node in nodes.iter_mut() {
