@@ -5,6 +5,7 @@ edition = "2024"
 description = "CommonMark/GFM/OFM parser for Madang"
 
 [dependencies]
+entities = "1"
 
 [dev-dependencies]
 pretty_assertions = "1.4"
