@@ -75,8 +75,8 @@ pub fn parse_link_destination(input: &str) -> Option<LinkDestination> {
     }
 
     Some(LinkDestination {
-        destination,
-        title,
+        destination: super::entity::resolve_entities(&destination),
+        title: title.map(|t| super::entity::resolve_entities(&t)),
         bytes_consumed: pos + 1, // include ')'
     })
 }

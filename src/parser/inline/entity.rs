@@ -94,6 +94,28 @@ fn codepoint_to_char(cp: u32) -> Option<char> {
     char::from_u32(cp)
 }
 
+/// 문자열 내 모든 entity reference를 치환한다.
+pub fn resolve_entities(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut pos = 0;
+    let bytes = input.as_bytes();
+
+    while pos < input.len() {
+        if bytes[pos] == b'&' {
+            if let Some((resolved, consumed)) = try_parse_entity(&input[pos..]) {
+                result.push_str(&resolved);
+                pos += consumed;
+                continue;
+            }
+        }
+        let c = input[pos..].chars().next().unwrap();
+        result.push(c);
+        pos += c.len_utf8();
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

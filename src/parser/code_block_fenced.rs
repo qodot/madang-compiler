@@ -2,6 +2,7 @@
 
 use crate::node::{BlockNode, CodeBlockNode};
 use super::helpers::{count_leading_char, remove_indent};
+use super::inline::entity::resolve_entities;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CodeBlockFencedStart {
@@ -99,7 +100,8 @@ fn parse_continue(line: &str, start: &CodeBlockFencedStart) -> CodeBlockFencedOk
 
 pub fn finalize(start: CodeBlockFencedStart, content: Vec<String>) -> BlockNode {
     let content_str = content.join("\n");
-    BlockNode::CodeBlock(CodeBlockNode::new(start.info, content_str))
+    let info = start.info.map(|s| resolve_entities(&s));
+    BlockNode::CodeBlock(CodeBlockNode::new(info, content_str))
 }
 
 pub fn parse_text(text: &str) -> Option<BlockNode> {

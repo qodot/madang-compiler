@@ -1942,7 +1942,6 @@ mod tests {
 
     // Example 32: entity in inline link destination and title
     #[test]
-    #[ignore] // TODO: entity resolution in link destination/title
     fn example_32() {
         let doc = parse("[foo](/f&ouml;&ouml; \"f&ouml;&ouml;\")\n");
         assert_eq!(doc.children.len(), 1);
@@ -1960,7 +1959,6 @@ mod tests {
 
     // Example 33: entity in reference link definition
     #[test]
-    #[ignore] // TODO: entity resolution in link ref def destination/title
     fn example_33() {
         let doc = parse("[foo]\n\n[foo]: /f&ouml;&ouml; \"f&ouml;&ouml;\"\n");
         assert_eq!(doc.children.len(), 1);
@@ -1968,7 +1966,6 @@ mod tests {
 
     // Example 34: entity in fenced code info string
     #[test]
-    #[ignore] // TODO: entity resolution in fenced code info string
     fn example_34() {
         let doc = parse("``` f&ouml;&ouml;\nfoo\n```\n");
         assert_eq!(doc.children.len(), 1);
