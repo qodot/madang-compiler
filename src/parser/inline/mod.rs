@@ -11,7 +11,7 @@ mod line_break;
 mod link;
 mod raw_html;
 
-use crate::node::{AutolinkNode, CodeSpanNode, InlineNode, LinkNode, RawHtmlNode, TextNode};
+use crate::node::{AutolinkNode, CodeSpanNode, ImageNode, InlineNode, LinkNode, RawHtmlNode, TextNode};
 use emphasis::{DelimiterChar, DelimiterRun};
 
 /// Bracket stack entry for link/image parsing
@@ -20,6 +20,8 @@ struct BracketEntry {
     node_index: usize,
     /// 활성 여부 (내부 링크가 완성되면 외부 bracket 비활성화)
     active: bool,
+    /// image bracket (`![`) 여부
+    image: bool,
 }
 
 /// raw 텍스트를 인라인 노드들로 파싱
@@ -145,12 +147,24 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
                 // delimiter 뒤의 텍스트가 합쳐지지 않도록 force_new_text 설정
                 force_new_text = true;
             }
+            b'!' if pos + 1 < raw.len() && bytes[pos + 1] == b'[' => {
+                // image bracket `![`
+                result.push(InlineNode::Text(TextNode("![".to_string())));
+                brackets.push(BracketEntry {
+                    node_index: result.len() - 1,
+                    active: true,
+                    image: true,
+                });
+                pos += 2;
+                force_new_text = true;
+            }
             b'[' => {
-                // bracket opener — result에 `[` 텍스트를 추가하고 위치 기록
+                // link bracket `[`
                 result.push(InlineNode::Text(TextNode("[".to_string())));
                 brackets.push(BracketEntry {
                     node_index: result.len() - 1,
                     active: true,
+                    image: false,
                 });
                 pos += 1;
                 force_new_text = true;
@@ -189,20 +203,30 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
                                 children
                             };
 
-                            let link_node = InlineNode::Link(LinkNode::new(
-                                children,
-                                &dest.destination,
-                                dest.title.as_deref(),
-                            ));
-                            result.push(link_node);
+                            let node = if bracket.image {
+                                InlineNode::Image(ImageNode::new(
+                                    children,
+                                    &dest.destination,
+                                    dest.title.as_deref(),
+                                ))
+                            } else {
+                                InlineNode::Link(LinkNode::new(
+                                    children,
+                                    &dest.destination,
+                                    dest.title.as_deref(),
+                                ))
+                            };
+                            result.push(node);
 
                             pos += 1 + dest.bytes_consumed; // skip ] + destination
                             force_new_text = true;
 
-                            // 이 링크 내부의 bracket들을 비활성화
-                            // (링크 안에 링크는 불가)
-                            for b in brackets.iter_mut() {
-                                b.active = false;
+                            // link의 경우 외부 bracket 비활성화 (링크 안에 링크는 불가)
+                            // image는 link 안에 포함될 수 있으므로 비활성화하지 않음
+                            if !bracket.image {
+                                for b in brackets.iter_mut() {
+                                    b.active = false;
+                                }
                             }
                             continue;
                         }
@@ -252,6 +276,7 @@ fn merge_adjacent_text(nodes: &mut Vec<InlineNode>) {
             InlineNode::Emphasis(e) => merge_adjacent_text(&mut e.children),
             InlineNode::Strong(s) => merge_adjacent_text(&mut s.children),
             InlineNode::Link(l) => merge_adjacent_text(&mut l.children),
+            InlineNode::Image(i) => merge_adjacent_text(&mut i.children),
             _ => {}
         }
     }
@@ -1464,11 +1489,17 @@ mod tests {
         );
     }
 
-    // Example 517: [![moon](moon.jpg)](/uri) — image inside link (image 미구현)
+    // Example 517: [![moon](moon.jpg)](/uri) — image inside link
     #[test]
-    #[ignore] // TODO: image 구문 미구현
     fn example_517() {
-        // Would need InlineNode::Image support
+        assert_eq!(
+            parse_inlines("[![moon](moon.jpg)](/uri)"),
+            vec![InlineNode::link(
+                vec![InlineNode::image(vec![InlineNode::text("moon")], "moon.jpg", None)],
+                "/uri",
+                None,
+            )]
+        );
     }
 
     // Example 518: [foo [bar](/uri)](/uri) — links cannot contain links
