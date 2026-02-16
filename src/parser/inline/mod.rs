@@ -1072,6 +1072,475 @@ mod tests {
     }
 
 
+    // =========================================================================
+    // parse_inlines — inline link 통합 테스트 (Examples 482-526)
+    // =========================================================================
+
+    // Example 482: [link](/uri "title")
+    #[test]
+    fn example_482() {
+        assert_eq!(
+            parse_inlines("[link](/uri \"title\")"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "/uri", Some("title"))]
+        );
+    }
+
+    // Example 483: [link](/uri)
+    #[test]
+    fn example_483() {
+        assert_eq!(
+            parse_inlines("[link](/uri)"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "/uri", None)]
+        );
+    }
+
+    // Example 484: [](./target.md)
+    #[test]
+    fn example_484() {
+        assert_eq!(
+            parse_inlines("[](./target.md)"),
+            vec![InlineNode::link(vec![], "./target.md", None)]
+        );
+    }
+
+    // Example 485: [link]()
+    #[test]
+    fn example_485() {
+        assert_eq!(
+            parse_inlines("[link]()"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "", None)]
+        );
+    }
+
+    // Example 486: [link](<>)
+    #[test]
+    fn example_486() {
+        assert_eq!(
+            parse_inlines("[link](<>)"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "", None)]
+        );
+    }
+
+    // Example 487: []()
+    #[test]
+    fn example_487() {
+        assert_eq!(
+            parse_inlines("[]()"),
+            vec![InlineNode::link(vec![], "", None)]
+        );
+    }
+
+    // Example 488: [link](/my uri) — space in bare dest → not a link
+    #[test]
+    fn example_488() {
+        assert_eq!(
+            parse_inlines("[link](/my uri)"),
+            vec![InlineNode::text("[link](/my uri)")]
+        );
+    }
+
+    // Example 489: [link](</my uri>) — angle brackets allow spaces
+    #[test]
+    fn example_489() {
+        assert_eq!(
+            parse_inlines("[link](</my uri>)"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "/my uri", None)]
+        );
+    }
+
+    // Example 490: [link](foo\nbar) — newline in bare dest → not a link
+    #[test]
+    fn example_490() {
+        assert_eq!(
+            parse_inlines("[link](foo\nbar)"),
+            vec![InlineNode::text("[link](foo"), InlineNode::SoftBreak, InlineNode::text("bar)")]
+        );
+    }
+
+    // Example 491: [link](<foo\nbar>) — newline in angle dest → not a link
+    #[test]
+    fn example_491() {
+        assert_eq!(
+            parse_inlines("[link](<foo\nbar>)"),
+            vec![InlineNode::text("[link]("), InlineNode::raw_html("<foo\nbar>"), InlineNode::text(")")]
+        );
+    }
+
+    // Example 492: [a](<b)c>)
+    #[test]
+    fn example_492() {
+        assert_eq!(
+            parse_inlines("[a](<b)c>)"),
+            vec![InlineNode::link(vec![InlineNode::text("a")], "b)c", None)]
+        );
+    }
+
+    // Example 493: [link](<foo\>) — backslash before > in angle dest
+    #[test]
+    #[ignore] // TODO: 파서가 `<foo\>` 를 angle dest에서 `\>` escape로 처리하여 닫는 `>`를 못 찾고, 전체를 텍스트로 처리함. 스펙은 `<foo>` raw html로 인식해야 함.
+    fn example_493() {
+        assert_eq!(
+            parse_inlines("[link](<foo\\>)"),
+            vec![InlineNode::text("[link]("), InlineNode::text("<foo>)")]
+        );
+    }
+
+    // Example 494: multi-line, multiple failed links
+    #[test]
+    fn example_494() {
+        assert_eq!(
+            parse_inlines("[a](<b)c\n[a](<b)c>\n[a](<b>c)"),
+            vec![
+                InlineNode::text("[a](<b)c"),
+                InlineNode::SoftBreak,
+                InlineNode::text("[a](<b)c>"),
+                InlineNode::SoftBreak,
+                InlineNode::text("[a]("),
+                InlineNode::raw_html("<b>"),
+                InlineNode::text("c)"),
+            ]
+        );
+    }
+
+    // Example 495: [link](\(foo\))
+    #[test]
+    fn example_495() {
+        assert_eq!(
+            parse_inlines("[link](\\(foo\\))"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "(foo)", None)]
+        );
+    }
+
+    // Example 496: [link](foo(and(bar)))
+    #[test]
+    fn example_496() {
+        assert_eq!(
+            parse_inlines("[link](foo(and(bar)))"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "foo(and(bar))", None)]
+        );
+    }
+
+    // Example 497: [link](foo(and(bar)) — unbalanced parens → not a link
+    #[test]
+    fn example_497() {
+        assert_eq!(
+            parse_inlines("[link](foo(and(bar))"),
+            vec![InlineNode::text("[link](foo(and(bar))")]
+        );
+    }
+
+    // Example 498: [link](foo\(and\(bar\))
+    #[test]
+    fn example_498() {
+        assert_eq!(
+            parse_inlines("[link](foo\\(and\\(bar\\))"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "foo(and(bar)", None)]
+        );
+    }
+
+    // Example 499: [link](<foo(and(bar)>)
+    #[test]
+    fn example_499() {
+        assert_eq!(
+            parse_inlines("[link](<foo(and(bar)>)"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "foo(and(bar)", None)]
+        );
+    }
+
+    // Example 500: [link](foo\)\:)
+    #[test]
+    fn example_500() {
+        assert_eq!(
+            parse_inlines("[link](foo\\)\\:)"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "foo):", None)]
+        );
+    }
+
+    // Example 501: fragment and query links
+    #[test]
+    fn example_501_a() {
+        assert_eq!(
+            parse_inlines("[link](#fragment)"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "#fragment", None)]
+        );
+    }
+
+    #[test]
+    fn example_501_b() {
+        assert_eq!(
+            parse_inlines("[link](https://example.com#fragment)"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "https://example.com#fragment", None)]
+        );
+    }
+
+    #[test]
+    fn example_501_c() {
+        assert_eq!(
+            parse_inlines("[link](https://example.com?foo=3#frag)"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "https://example.com?foo=3#frag", None)]
+        );
+    }
+
+    // Example 502: [link](foo\bar) — backslash not before punctuation
+    #[test]
+    fn example_502() {
+        assert_eq!(
+            parse_inlines("[link](foo\\bar)"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "foo\\bar", None)]
+        );
+    }
+
+    // Example 503: [link](foo%20b&auml;) — entity not resolved by parser
+    #[test]
+    fn example_503() {
+        assert_eq!(
+            parse_inlines("[link](foo%20b&auml;)"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "foo%20b&auml;", None)]
+        );
+    }
+
+    // Example 504: [link]("title") — quotes as part of destination
+    #[test]
+    fn example_504() {
+        assert_eq!(
+            parse_inlines("[link](\"title\")"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "\"title\"", None)]
+        );
+    }
+
+    // Example 505: title with different quote types
+    #[test]
+    fn example_505_a() {
+        assert_eq!(
+            parse_inlines("[link](/url \"title\")"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "/url", Some("title"))]
+        );
+    }
+
+    #[test]
+    fn example_505_b() {
+        assert_eq!(
+            parse_inlines("[link](/url 'title')"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "/url", Some("title"))]
+        );
+    }
+
+    #[test]
+    fn example_505_c() {
+        assert_eq!(
+            parse_inlines("[link](/url (title))"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "/url", Some("title"))]
+        );
+    }
+
+    // Example 506: [link](/url "title \"&quot;") — escaped quote in title
+    #[test]
+    fn example_506() {
+        // &quot; is not resolved by our parser, stays as-is
+        assert_eq!(
+            parse_inlines("[link](/url \"title \\\"&quot;\")"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "/url", Some("title \"&quot;"))]
+        );
+    }
+
+    // Example 507: [link](/url\u{a0}"title") — NBSP between url and title → title is part of dest
+    #[test]
+    fn example_507() {
+        // NBSP is not whitespace for link parser, so "title" becomes part of destination
+        assert_eq!(
+            parse_inlines("[link](/url\u{a0}\"title\")"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "/url\u{a0}\"title\"", None)]
+        );
+    }
+
+    // Example 508: [link](/url "title "and" title") — not a valid title
+    #[test]
+    fn example_508() {
+        assert_eq!(
+            parse_inlines("[link](/url \"title \"and\" title\")"),
+            vec![InlineNode::text("[link](/url \"title \"and\" title\")")]
+        );
+    }
+
+    // Example 509: [link](/url 'title "and" title')
+    #[test]
+    fn example_509() {
+        assert_eq!(
+            parse_inlines("[link](/url 'title \"and\" title')"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "/url", Some("title \"and\" title"))]
+        );
+    }
+
+    // Example 510: [link](   /uri\n  "title"  )
+    #[test]
+    fn example_510() {
+        assert_eq!(
+            parse_inlines("[link](   /uri\n  \"title\"  )"),
+            vec![InlineNode::link(vec![InlineNode::text("link")], "/uri", Some("title"))]
+        );
+    }
+
+    // Example 511: [link] (/uri) — space between ] and ( → not a link
+    #[test]
+    fn example_511() {
+        assert_eq!(
+            parse_inlines("[link] (/uri)"),
+            vec![InlineNode::text("[link] (/uri)")]
+        );
+    }
+
+    // Example 512: [link [foo [bar]]](/uri) — nested brackets in link text
+    #[test]
+    fn example_512() {
+        assert_eq!(
+            parse_inlines("[link [foo [bar]]](/uri)"),
+            vec![InlineNode::link(vec![InlineNode::text("link [foo [bar]]")], "/uri", None)]
+        );
+    }
+
+    // Example 513: [link] bar](/uri) — not a link
+    #[test]
+    fn example_513() {
+        assert_eq!(
+            parse_inlines("[link] bar](/uri)"),
+            vec![InlineNode::text("[link] bar](/uri)")]
+        );
+    }
+
+    // Example 514: [link [bar](/uri) — inner link wins
+    #[test]
+    fn example_514() {
+        assert_eq!(
+            parse_inlines("[link [bar](/uri)"),
+            vec![InlineNode::text("[link "), InlineNode::link(vec![InlineNode::text("bar")], "/uri", None)]
+        );
+    }
+
+    // Example 515: [link \[bar](/uri) — escaped bracket
+    #[test]
+    fn example_515() {
+        assert_eq!(
+            parse_inlines("[link \\[bar](/uri)"),
+            vec![InlineNode::link(vec![InlineNode::text("link [bar")], "/uri", None)]
+        );
+    }
+
+    // Example 516: [link *foo **bar** `#`*](/uri) — emphasis inside link
+    #[test]
+    #[ignore] // TODO: emphasis processing panics (index out of bounds) when emphasis is inside link children
+    fn example_516() {
+        assert_eq!(
+            parse_inlines("[link *foo **bar** `#`*](/uri)"),
+            vec![InlineNode::link(
+                vec![
+                    InlineNode::text("link "),
+                    InlineNode::emphasis(vec![
+                        InlineNode::text("foo "),
+                        InlineNode::strong(vec![InlineNode::text("bar")]),
+                        InlineNode::text(" "),
+                        InlineNode::code_span("#"),
+                    ]),
+                ],
+                "/uri",
+                None,
+            )]
+        );
+    }
+
+    // Example 517: [![moon](moon.jpg)](/uri) — image inside link (image 미구현)
+    #[test]
+    #[ignore] // TODO: image 구문 미구현
+    fn example_517() {
+        // Would need InlineNode::Image support
+    }
+
+    // Example 518: [foo [bar](/uri)](/uri) — links cannot contain links
+    #[test]
+    fn example_518() {
+        assert_eq!(
+            parse_inlines("[foo [bar](/uri)](/uri)"),
+            vec![InlineNode::text("[foo "), InlineNode::link(vec![InlineNode::text("bar")], "/uri", None), InlineNode::text("](/uri)")]
+        );
+    }
+
+    // Example 519: [foo *[bar [baz](/uri)](/uri)*](/uri) — nested link precedence
+    #[test]
+    fn example_519() {
+        assert_eq!(
+            parse_inlines("[foo *[bar [baz](/uri)](/uri)*](/uri)"),
+            vec![
+                InlineNode::text("[foo "),
+                InlineNode::emphasis(vec![
+                    InlineNode::text("[bar "),
+                    InlineNode::link(vec![InlineNode::text("baz")], "/uri", None),
+                    InlineNode::text("](/uri)"),
+                ]),
+                InlineNode::text("](/uri)"),
+            ]
+        );
+    }
+
+    // Example 520: ![[[foo](uri1)](uri2)](uri3) — image 미구현
+    #[test]
+    #[ignore] // TODO: image 구문 미구현
+    fn example_520() {
+    }
+
+    // Example 521: *[foo*](/uri) — emphasis delimiter inside link text
+    #[test]
+    #[ignore] // TODO: emphasis processing panics (index out of bounds) when emphasis delimiter spans link boundary
+    fn example_521() {
+        assert_eq!(
+            parse_inlines("*[foo*](/uri)"),
+            vec![InlineNode::text("*"), InlineNode::link(vec![InlineNode::text("foo*")], "/uri", None)]
+        );
+    }
+
+    // Example 522: [foo *bar](baz*) — unmatched emphasis in link
+    #[test]
+    fn example_522() {
+        assert_eq!(
+            parse_inlines("[foo *bar](baz*)"),
+            vec![InlineNode::link(vec![InlineNode::text("foo *bar")], "baz*", None)]
+        );
+    }
+
+    // Example 523: *foo [bar* baz] — emphasis closes before link bracket
+    #[test]
+    fn example_523() {
+        assert_eq!(
+            parse_inlines("*foo [bar* baz]"),
+            vec![InlineNode::emphasis(vec![InlineNode::text("foo [bar")]), InlineNode::text(" baz]")]
+        );
+    }
+
+    // Example 524: [foo <bar attr="](baz)"> — raw HTML contains ]
+    #[test]
+    fn example_524() {
+        assert_eq!(
+            parse_inlines("[foo <bar attr=\"](baz)\">"),
+            vec![InlineNode::text("[foo "), InlineNode::raw_html("<bar attr=\"](baz)\">")]
+        );
+    }
+
+    // Example 525: [foo`](/uri)` — code span contains ]
+    #[test]
+    fn example_525() {
+        assert_eq!(
+            parse_inlines("[foo`](/uri)`"),
+            vec![InlineNode::text("[foo"), InlineNode::code_span("](/uri)")]
+        );
+    }
+
+    // Example 526: [foo<https://example.com/?search=](uri)> — autolink contains ]
+    #[test]
+    fn example_526() {
+        assert_eq!(
+            parse_inlines("[foo<https://example.com/?search=](uri)>"),
+            vec![InlineNode::text("[foo"), InlineNode::autolink_uri("https://example.com/?search=](uri)")]
+        );
+    }
+
     // --- SKIPPED emphasis examples ---
     // Example 352: entity references (미구현)
     // Example 354: multi-paragraph
