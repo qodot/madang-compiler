@@ -1708,8 +1708,19 @@ mod tests {
 
     // Example 520: ![[[foo](uri1)](uri2)](uri3) — image 미구현
     #[test]
-    #[ignore] // TODO: image 구문 미구현
     fn example_520() {
+        // ![[[foo](uri1)](uri2)](uri3) → image with complex nested content
+        let result = parse_inlines("![[[foo](uri1)](uri2)](uri3)");
+        assert_eq!(result.len(), 1);
+        if let InlineNode::Image(img) = &result[0] {
+            assert_eq!(img.destination, "uri3");
+            // children: [[foo](uri1)](uri2) → link wrapping link
+            // inner: [foo](uri1) is a link, but [ before it is just text
+            // outer: [...](uri2) is a link
+            assert!(img.children.iter().any(|c| matches!(c, InlineNode::Link(_))));
+        } else {
+            panic!("Expected image, got {:?}", result);
+        }
     }
 
     // Example 521: *[foo*](/uri) — emphasis delimiter inside link text
