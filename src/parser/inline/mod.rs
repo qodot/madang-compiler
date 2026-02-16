@@ -7,6 +7,7 @@ mod autolink;
 pub(crate) mod backslash_escape;
 mod code_span;
 mod emphasis;
+mod entity;
 mod line_break;
 mod link;
 mod raw_html;
@@ -287,6 +288,30 @@ pub fn parse_inlines_with_refs(raw: &str, ref_map: Option<&crate::parser::link_r
                     // bracket 없음 → `]`를 텍스트로
                     push_text_char(&mut result, ']');
                     pos += 1;
+                }
+            }
+            b'&' => {
+                match entity::try_parse_entity(&raw[pos..]) {
+                    Some((resolved, consumed)) => {
+                        if force_new_text {
+                            result.push(InlineNode::Text(TextNode(resolved)));
+                            force_new_text = false;
+                        } else {
+                            for ch in resolved.chars() {
+                                push_text_char(&mut result, ch);
+                            }
+                        }
+                        pos += consumed;
+                    }
+                    None => {
+                        if force_new_text {
+                            result.push(InlineNode::Text(TextNode("&".to_string())));
+                            force_new_text = false;
+                        } else {
+                            push_text_char(&mut result, '&');
+                        }
+                        pos += 1;
+                    }
                 }
             }
             _ => {

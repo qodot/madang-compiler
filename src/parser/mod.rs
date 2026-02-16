@@ -1834,4 +1834,269 @@ mod tests {
             panic!("Expected list");
         }
     }
+
+    // Example 25: named entity references
+    #[test]
+    fn example_25() {
+        let doc = parse("&nbsp; &amp; &copy; &AElig; &Dcaron;\n&frac34; &HilbertSpace; &DifferentialD;\n&ClockwiseContourIntegral; &ngE;\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            let text = get_all_text(&p.children);
+            assert!(text.contains('\u{00A0}')); // &nbsp;
+            assert!(text.contains('&')); // &amp;
+            assert!(text.contains('©')); // &copy;
+            assert!(text.contains('Æ')); // &AElig;
+            assert!(text.contains('Ď')); // &Dcaron;
+            assert!(text.contains('¾')); // &frac34;
+            assert!(text.contains('ℋ')); // &HilbertSpace;
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 26: numeric decimal character references
+    #[test]
+    fn example_26() {
+        let doc = parse("&#35; &#1234; &#992; &#0;\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            let text = get_all_text(&p.children);
+            assert!(text.contains('#')); // &#35;
+            assert!(text.contains('Ӓ')); // &#1234;
+            assert!(text.contains('Ϡ')); // &#992;
+            assert!(text.contains('\u{FFFD}')); // &#0;
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 27: numeric hex character references
+    #[test]
+    fn example_27() {
+        let doc = parse("&#X22; &#XD06; &#xcab;\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            let text = get_all_text(&p.children);
+            assert!(text.contains('"')); // &#X22;
+            assert!(text.contains('ആ')); // &#XD06;
+            assert!(text.contains('ಫ')); // &#xcab;
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 28: invalid entity references remain as literal text
+    #[test]
+    fn example_28() {
+        let doc = parse("&nbsp &x; &#; &#x;\n&#87654321;\n&#abcdef0;\n&ThisIsNotDefined; &hi?;\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            let text = get_all_text(&p.children);
+            assert!(text.contains("&nbsp")); // no semicolon
+            assert!(text.contains("&x;")); // invalid
+            assert!(text.contains("&#;")); // empty numeric
+            assert!(text.contains("&#x;")); // empty hex
+            assert!(text.contains("&#87654321;")); // out of range
+            assert!(text.contains("&#abcdef0;")); // not valid decimal
+            assert!(text.contains("&ThisIsNotDefined;")); // unknown
+            assert!(text.contains("&hi?;")); // invalid chars
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 29: entity without semicolon not recognized
+    #[test]
+    fn example_29() {
+        let doc = parse("&copy\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            let text = get_all_text(&p.children);
+            assert!(text.contains("&copy"));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 30: unknown entity not recognized
+    #[test]
+    fn example_30() {
+        let doc = parse("&MadeUpEntity;\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            let text = get_all_text(&p.children);
+            assert!(text.contains("&MadeUpEntity;"));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 31: entity in raw HTML (not processed by inline parser, passed through)
+    #[test]
+    fn example_31() {
+        let doc = parse("<a href=\"&ouml;&ouml;.html\">\n");
+        assert_eq!(doc.children.len(), 1);
+        // This should be an HTML block or paragraph with raw HTML
+        // The entities inside raw HTML are not processed by the markdown parser
+    }
+
+    // Example 32: entity in inline link destination and title
+    #[test]
+    #[ignore] // TODO: entity resolution in link destination/title
+    fn example_32() {
+        let doc = parse("[foo](/f&ouml;&ouml; \"f&ouml;&ouml;\")\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            if let InlineNode::Link(link) = &p.children[0] {
+                assert!(link.destination.contains("ö"));
+                assert_eq!(link.title.as_deref(), Some("föö"));
+            } else {
+                panic!("Expected link");
+            }
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 33: entity in reference link definition
+    #[test]
+    #[ignore] // TODO: entity resolution in link ref def destination/title
+    fn example_33() {
+        let doc = parse("[foo]\n\n[foo]: /f&ouml;&ouml; \"f&ouml;&ouml;\"\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 34: entity in fenced code info string
+    #[test]
+    #[ignore] // TODO: entity resolution in fenced code info string
+    fn example_34() {
+        let doc = parse("``` f&ouml;&ouml;\nfoo\n```\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::CodeBlock(cb) = &doc.children[0] {
+            assert_eq!(cb.info.as_deref(), Some("föö"));
+        } else {
+            panic!("Expected code block");
+        }
+    }
+
+    // Example 35: entities NOT processed in code spans
+    #[test]
+    fn example_35() {
+        let doc = parse("`f&ouml;&ouml;`\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            if let InlineNode::CodeSpan(cs) = &p.children[0] {
+                assert_eq!(cs.0, "f&ouml;&ouml;");
+            } else {
+                panic!("Expected code span");
+            }
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 36: entities NOT processed in indented code blocks
+    #[test]
+    fn example_36() {
+        let doc = parse("    f&ouml;f&ouml;\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::CodeBlock(cb) = &doc.children[0] {
+            assert_eq!(cb.content, "f&ouml;f&ouml;");
+        } else {
+            panic!("Expected code block");
+        }
+    }
+
+    // Example 37: entity-produced chars don't trigger markdown syntax
+    #[test]
+    fn example_37() {
+        let doc = parse("&#42;foo&#42;\n*foo*\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            // &#42; → * but should NOT be emphasis
+            // First line: *foo* as literal text
+            // Second line: <em>foo</em>
+            let has_emphasis = p.children.iter().any(|c| matches!(c, InlineNode::Emphasis(_)));
+            assert!(has_emphasis, "Second *foo* should be emphasis");
+            let text = get_all_text(&p.children);
+            assert!(text.contains("*foo*")); // entity-produced * should be literal
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 38: entity-produced chars don't trigger block syntax
+    #[test]
+    fn example_38() {
+        let doc = parse("&#42; foo\n\n* foo\n");
+        assert_eq!(doc.children.len(), 2);
+        // First: paragraph with "* foo" (entity-produced * is not list marker)
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            let text = get_all_text(&p.children);
+            assert!(text.contains("*"));
+            assert!(text.contains("foo"));
+        } else {
+            panic!("Expected paragraph");
+        }
+        // Second: list with "foo"
+        assert!(matches!(&doc.children[1], BlockNode::List(_)));
+    }
+
+    // Example 39: numeric entity for newline doesn't create hard break
+    #[test]
+    fn example_39() {
+        let doc = parse("foo&#10;&#10;bar\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            // &#10; → newline char, but as text not as line break
+            let text = get_all_text(&p.children);
+            assert!(text.contains("foo"));
+            assert!(text.contains("bar"));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 40: numeric entity for tab
+    #[test]
+    fn example_40() {
+        let doc = parse("&#9;foo\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            let text = get_all_text(&p.children);
+            assert!(text.contains('\t'));
+            assert!(text.contains("foo"));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 41: entity in inline link title is literal (not processed as title delimiter)
+    #[test]
+    fn example_41() {
+        let doc = parse("[a](url &quot;tit&quot;)\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            // &quot; should not act as title delimiter — this is not a valid link
+            assert!(!p.children.iter().any(|c| matches!(c, InlineNode::Link(_))));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    /// Helper: extract all text content from inline nodes
+    fn get_all_text(nodes: &[InlineNode]) -> String {
+        let mut result = String::new();
+        for node in nodes {
+            match node {
+                InlineNode::Text(t) => result.push_str(&t.0),
+                InlineNode::Emphasis(e) => result.push_str(&get_all_text(&e.children)),
+                InlineNode::Strong(s) => result.push_str(&get_all_text(&s.children)),
+                InlineNode::Link(l) => result.push_str(&get_all_text(&l.children)),
+                InlineNode::Image(i) => result.push_str(&get_all_text(&i.children)),
+                _ => {}
+            }
+        }
+        result
+    }
 }
