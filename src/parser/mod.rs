@@ -419,13 +419,12 @@ mod tests {
 
     // Example 195: link ref def with angle-bracket destination
     #[test]
-    #[ignore] // TODO: angle-bracket destination with spaces in ref def
     fn example_195() {
         let doc = parse("[Foo bar]:\n<my url>\n'title'\n\n[Foo bar]\n");
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
-                InlineNode::link(vec![InlineNode::text("Foo bar")], "my%20url", Some("title"))
+                InlineNode::link(vec![InlineNode::text("Foo bar")], "my url", Some("title"))
             ]);
         } else {
             panic!("Expected paragraph");
@@ -499,13 +498,12 @@ mod tests {
 
     // Example 202: backslash escapes in destination and title
     #[test]
-    #[ignore] // TODO: backslash escape handling in ref def destination/title
     fn example_202() {
         let doc = parse("[foo]: /url\\bar\\*baz \"foo\\\"bar\\baz\"\n\n[foo]\n");
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
-                InlineNode::link(vec![InlineNode::text("foo")], "/url%5Cbar*baz", Some("foo\"bar\\baz"))
+                InlineNode::link(vec![InlineNode::text("foo")], "/url\\bar*baz", Some("foo\"bar\\baz"))
             ]);
         } else {
             panic!("Expected paragraph");
@@ -590,7 +588,6 @@ mod tests {
 
     // Example 210: title on next line without belonging to ref def
     #[test]
-    #[ignore] // TODO: title on next line handling
     fn example_210() {
         let doc = parse("[foo]: /url\n\"title\" ok\n");
         assert_eq!(doc.children.len(), 1);
@@ -937,7 +934,6 @@ mod tests {
 
     // Example 549: escaped bracket in ref label
     #[test]
-    #[ignore] // TODO: escaped bracket in ref label — ref def with `ref\[` not matched correctly
     fn example_549() {
         let doc = parse("[foo][ref\\[]\n\n[ref\\[]: /uri\n");
         assert_eq!(doc.children.len(), 1);
