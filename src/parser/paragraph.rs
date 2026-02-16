@@ -8,7 +8,7 @@ use super::inline::parse_inlines;
 /// Paragraph 파싱 (기본 fallback)
 /// 다른 블록 요소가 아닌 경우 항상 Paragraph로 처리
 pub fn parse(trimmed: &str) -> BlockNode {
-    BlockNode::Paragraph(ParagraphNode::new(parse_inlines(trimmed)))
+    BlockNode::Paragraph(ParagraphNode::with_raw_text(parse_inlines(trimmed), trimmed))
 }
 
 #[cfg(test)]

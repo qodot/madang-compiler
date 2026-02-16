@@ -292,16 +292,34 @@ impl HtmlBlockNode {
 }
 
 /// Paragraph 노드
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ParagraphNode {
     pub children: Vec<InlineNode>,
+    /// 인라인 재파싱을 위한 원본 텍스트 (link ref def 처리 후 None)
+    pub raw_text: Option<String>,
+}
+
+impl PartialEq for ParagraphNode {
+    fn eq(&self, other: &Self) -> bool {
+        self.children == other.children
+    }
 }
 
 impl Node for ParagraphNode {}
 
 impl ParagraphNode {
     pub fn new(children: Vec<InlineNode>) -> Self {
-        Self { children }
+        Self {
+            children,
+            raw_text: None,
+        }
+    }
+
+    pub fn with_raw_text(children: Vec<InlineNode>, raw_text: &str) -> Self {
+        Self {
+            children,
+            raw_text: Some(raw_text.to_string()),
+        }
     }
 }
 

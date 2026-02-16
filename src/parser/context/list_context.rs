@@ -286,8 +286,9 @@ fn parse_item_lines_with_text_only(lines: &[ItemLine]) -> Vec<BlockNode> {
 
         if has_text_only {
             // text_only가 있는 청크는 무조건 paragraph로 처리
-            result.push(BlockNode::Paragraph(ParagraphNode::new(
+            result.push(BlockNode::Paragraph(ParagraphNode::with_raw_text(
                 crate::parser::inline::parse_inlines(&content),
+                &content,
             )));
         } else {
             // 일반 청크는 전체 파서로 파싱
