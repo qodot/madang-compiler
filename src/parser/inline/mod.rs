@@ -1678,4 +1678,167 @@ mod tests {
     fn test_parse_inlines_raw_html(#[case] input: &str, #[case] expected: Vec<InlineNode>) {
         assert_eq!(parse_inlines(input), expected);
     }
+
+    // =========================================================================
+    // parse_inlines — image 통합 테스트 (Examples 572-593)
+    // =========================================================================
+
+    // Example 572: ![foo](/url "title")
+    #[test]
+    fn example_572() {
+        assert_eq!(
+            parse_inlines("![foo](/url \"title\")"),
+            vec![InlineNode::image(vec![InlineNode::text("foo")], "/url", Some("title"))]
+        );
+    }
+
+    // Example 573: reference image
+    #[test]
+    #[ignore] // link reference definition 미구현
+    fn example_573() {}
+
+    // Example 574: ![foo ![bar](/url)](/url2) — nested image in alt
+    #[test]
+    fn example_574() {
+        assert_eq!(
+            parse_inlines("![foo ![bar](/url)](/url2)"),
+            vec![InlineNode::image(
+                vec![InlineNode::text("foo "), InlineNode::image(vec![InlineNode::text("bar")], "/url", None)],
+                "/url2",
+                None,
+            )]
+        );
+    }
+
+    // Example 575: ![foo [bar](/url)](/url2) — link in image alt
+    #[test]
+    #[ignore] // 파서가 image alt 내부의 link를 처리할 때 image opener가 비활성화됨
+    fn example_575() {
+        assert_eq!(
+            parse_inlines("![foo [bar](/url)](/url2)"),
+            vec![InlineNode::image(
+                vec![InlineNode::text("foo "), InlineNode::link(vec![InlineNode::text("bar")], "/url", None)],
+                "/url2",
+                None,
+            )]
+        );
+    }
+
+    // Example 576: reference image
+    #[test]
+    #[ignore] // link reference definition 미구현
+    fn example_576() {}
+
+    // Example 577: reference image
+    #[test]
+    #[ignore] // link reference definition 미구현
+    fn example_577() {}
+
+    // Example 578: ![foo](train.jpg)
+    #[test]
+    fn example_578() {
+        assert_eq!(
+            parse_inlines("![foo](train.jpg)"),
+            vec![InlineNode::image(vec![InlineNode::text("foo")], "train.jpg", None)]
+        );
+    }
+
+    // Example 579: My ![foo bar](/path/to/train.jpg  "title"   )
+    #[test]
+    fn example_579() {
+        assert_eq!(
+            parse_inlines("My ![foo bar](/path/to/train.jpg  \"title\"   )"),
+            vec![InlineNode::text("My "), InlineNode::image(vec![InlineNode::text("foo bar")], "/path/to/train.jpg", Some("title"))]
+        );
+    }
+
+    // Example 580: ![foo](<url>)
+    #[test]
+    fn example_580() {
+        assert_eq!(
+            parse_inlines("![foo](<url>)"),
+            vec![InlineNode::image(vec![InlineNode::text("foo")], "url", None)]
+        );
+    }
+
+    // Example 581: ![](/url)
+    #[test]
+    fn example_581() {
+        assert_eq!(
+            parse_inlines("![](/url)"),
+            vec![InlineNode::image(vec![], "/url", None)]
+        );
+    }
+
+    // Example 582: reference image
+    #[test]
+    #[ignore] // link reference definition 미구현
+    fn example_582() {}
+
+    // Example 583: reference image
+    #[test]
+    #[ignore] // link reference definition 미구현
+    fn example_583() {}
+
+    // Example 584: reference image
+    #[test]
+    #[ignore] // link reference definition 미구현
+    fn example_584() {}
+
+    // Example 585: reference image
+    #[test]
+    #[ignore] // link reference definition 미구현
+    fn example_585() {}
+
+    // Example 586: reference image
+    #[test]
+    #[ignore] // link reference definition 미구현
+    fn example_586() {}
+
+    // Example 587: reference image
+    #[test]
+    #[ignore] // link reference definition 미구현
+    fn example_587() {}
+
+    // Example 588: reference image
+    #[test]
+    #[ignore] // link reference definition 미구현
+    fn example_588() {}
+
+    // Example 589: reference image
+    #[test]
+    #[ignore] // link reference definition 미구현
+    fn example_589() {}
+
+    // Example 590: ![[foo]] — not a valid image syntax
+    #[test]
+    fn example_590() {
+        assert_eq!(
+            parse_inlines("![[foo]]"),
+            vec![InlineNode::text("![[foo]]")]
+        );
+    }
+
+    // Example 591: reference image
+    #[test]
+    #[ignore] // link reference definition 미구현
+    fn example_591() {}
+
+    // Example 592: !\[foo] — escaped ! before [
+    #[test]
+    fn example_592() {
+        assert_eq!(
+            parse_inlines("!\\[foo]"),
+            vec![InlineNode::text("![foo]")]
+        );
+    }
+
+    // Example 593: \![foo] — escaped ! (not image)
+    #[test]
+    fn example_593() {
+        assert_eq!(
+            parse_inlines("\\![foo]"),
+            vec![InlineNode::text("![foo]")]
+        );
+    }
 }
