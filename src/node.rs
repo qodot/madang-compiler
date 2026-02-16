@@ -101,6 +101,26 @@ impl AutolinkNode {
     }
 }
 
+/// Link 노드
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinkNode {
+    pub children: Vec<InlineNode>,
+    pub destination: String,
+    pub title: Option<String>,
+}
+
+impl Node for LinkNode {}
+
+impl LinkNode {
+    pub fn new(children: Vec<InlineNode>, destination: &str, title: Option<&str>) -> Self {
+        Self {
+            children,
+            destination: destination.to_string(),
+            title: title.map(|t| t.to_string()),
+        }
+    }
+}
+
 /// Raw HTML (인라인) 노드
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawHtmlNode {
@@ -126,9 +146,10 @@ pub enum InlineNode {
     RawHtml(RawHtmlNode),
     Emphasis(EmphasisNode),
     Strong(StrongNode),
+    Link(LinkNode),
     HardBreak,
     SoftBreak,
-    // 향후: Link, Image 등
+    // 향후: Image 등
 }
 
 impl Node for InlineNode {}
@@ -167,6 +188,11 @@ impl InlineNode {
     #[cfg(test)]
     pub fn raw_html(content: &str) -> Self {
         InlineNode::RawHtml(RawHtmlNode::new(content))
+    }
+
+    #[cfg(test)]
+    pub fn link(children: Vec<InlineNode>, destination: &str, title: Option<&str>) -> Self {
+        InlineNode::Link(LinkNode::new(children, destination, title))
     }
 }
 

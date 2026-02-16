@@ -8,10 +8,19 @@ pub(crate) mod backslash_escape;
 mod code_span;
 mod emphasis;
 mod line_break;
+mod link;
 mod raw_html;
 
-use crate::node::{AutolinkNode, CodeSpanNode, InlineNode, RawHtmlNode, TextNode};
+use crate::node::{AutolinkNode, CodeSpanNode, InlineNode, LinkNode, RawHtmlNode, TextNode};
 use emphasis::{DelimiterChar, DelimiterRun};
+
+/// Bracket stack entry for link/image parsing
+struct BracketEntry {
+    /// `[` 텍스트 노드의 result 내 인덱스
+    node_index: usize,
+    /// 활성 여부 (내부 링크가 완성되면 외부 bracket 비활성화)
+    active: bool,
+}
 
 /// raw 텍스트를 인라인 노드들로 파싱
 ///
@@ -19,6 +28,7 @@ use emphasis::{DelimiterChar, DelimiterRun};
 pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
     let mut result = Vec::new();
     let mut delimiters: Vec<DelimiterRun> = Vec::new();
+    let mut brackets: Vec<BracketEntry> = Vec::new();
     let mut pos = 0;
     let mut force_new_text = false;
     let bytes = raw.as_bytes();
@@ -135,6 +145,59 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
                 // delimiter 뒤의 텍스트가 합쳐지지 않도록 force_new_text 설정
                 force_new_text = true;
             }
+            b'[' => {
+                // bracket opener — result에 `[` 텍스트를 추가하고 위치 기록
+                result.push(InlineNode::Text(TextNode("[".to_string())));
+                brackets.push(BracketEntry {
+                    node_index: result.len() - 1,
+                    active: true,
+                });
+                pos += 1;
+                force_new_text = true;
+            }
+            b']' => {
+                if let Some(bracket) = brackets.pop() {
+                    if bracket.active && pos + 1 < raw.len() && bytes[pos + 1] == b'(' {
+                        // `](` → 인라인 링크 시도
+                        if let Some(dest) = link::parse_link_destination(&raw[pos + 1..]) {
+                            // link text: bracket.node_index+1 ~ result.len()-1
+                            let children: Vec<InlineNode> = result
+                                .drain((bracket.node_index + 1)..)
+                                .collect();
+                            // bracket의 `[` 텍스트 제거
+                            result.pop(); // remove the `[` text node
+
+                            // children에서 emphasis 처리
+                            // (delimiter는 bracket 이후 것만 처리해야 하지만
+                            //  현재는 전체 emphasis를 나중에 처리하므로 일단 그대로)
+
+                            let link_node = InlineNode::Link(LinkNode::new(
+                                children,
+                                &dest.destination,
+                                dest.title.as_deref(),
+                            ));
+                            result.push(link_node);
+
+                            pos += 1 + dest.bytes_consumed; // skip ] + destination
+                            force_new_text = true;
+
+                            // 이 링크 내부의 bracket들을 비활성화
+                            // (링크 안에 링크는 불가)
+                            for b in brackets.iter_mut() {
+                                b.active = false;
+                            }
+                            continue;
+                        }
+                    }
+                    // 매칭 실패 → `]`를 텍스트로
+                    push_text_char(&mut result, ']');
+                    pos += 1;
+                } else {
+                    // bracket 없음 → `]`를 텍스트로
+                    push_text_char(&mut result, ']');
+                    pos += 1;
+                }
+            }
             _ => {
                 let c = raw[pos..].chars().next().unwrap();
                 if force_new_text {
@@ -170,6 +233,7 @@ fn merge_adjacent_text(nodes: &mut Vec<InlineNode>) {
         match node {
             InlineNode::Emphasis(e) => merge_adjacent_text(&mut e.children),
             InlineNode::Strong(s) => merge_adjacent_text(&mut s.children),
+            InlineNode::Link(l) => merge_adjacent_text(&mut l.children),
             _ => {}
         }
     }
