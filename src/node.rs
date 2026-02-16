@@ -232,17 +232,29 @@ pub struct ThematicBreakNode;
 impl Node for ThematicBreakNode {}
 
 /// ATX Heading 노드
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct HeadingNode {
     pub level: u8,
     pub children: Vec<InlineNode>,
+    /// setext heading의 원본 텍스트 (ref def 추출용)
+    pub raw_text: Option<String>,
+}
+
+impl PartialEq for HeadingNode {
+    fn eq(&self, other: &Self) -> bool {
+        self.level == other.level && self.children == other.children
+    }
 }
 
 impl Node for HeadingNode {}
 
 impl HeadingNode {
     pub fn new(level: u8, children: Vec<InlineNode>) -> Self {
-        Self { level, children }
+        Self { level, children, raw_text: None }
+    }
+
+    pub fn with_raw_text(level: u8, children: Vec<InlineNode>, raw_text: &str) -> Self {
+        Self { level, children, raw_text: Some(raw_text.to_string()) }
     }
 }
 

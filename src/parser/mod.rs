@@ -18,7 +18,7 @@ mod list_item;
 mod paragraph;
 mod thematic_break;
 
-use crate::node::{BlockNode, CodeBlockNode, DocumentNode, ParagraphNode};
+use crate::node::{BlockNode, CodeBlockNode, DocumentNode, HeadingNode, ParagraphNode};
 use code_block_fenced::{parse as parse_code_block_fenced, CodeBlockFencedOk};
 use code_block_indented::try_start as try_start_code_block_indented;
 use context::{
@@ -308,6 +308,27 @@ fn extract_link_ref_defs(
                     }
                 } else {
                     Some(BlockNode::Paragraph(para))
+                }
+            }
+            BlockNode::Heading(heading) => {
+                if let Some(raw) = &heading.raw_text {
+                    let remaining = link_ref_def::extract_definitions(raw, ref_map);
+                    if remaining.trim().is_empty() {
+                        // ref def만 있었으면 setext underline은 paragraph가 됨
+                        // (=== 또는 --- 자체는 이미 소비되었으므로 빈 paragraph는 제거)
+                        None
+                    } else if remaining != *raw {
+                        // ref def 추출 후 남은 텍스트 → heading으로 유지
+                        Some(BlockNode::Heading(HeadingNode::with_raw_text(
+                            heading.level,
+                            inline::parse_inlines(&remaining),
+                            &remaining,
+                        )))
+                    } else {
+                        Some(BlockNode::Heading(heading))
+                    }
+                } else {
+                    Some(BlockNode::Heading(heading))
                 }
             }
             BlockNode::Blockquote(mut bq) => {
@@ -635,7 +656,6 @@ mod tests {
 
     // Example 215: ref def + setext heading
     #[test]
-    #[ignore] // TODO: ref def followed by setext heading — ref not extracted when combined with setext
     fn example_215() {
         let doc = parse("[foo]: /url\nbar\n===\n[foo]\n");
         // ref def extracted, "bar\n===" becomes setext h1, then [foo] paragraph
@@ -652,7 +672,6 @@ mod tests {
 
     // Example 216: ref def label looks like setext underline
     #[test]
-    #[ignore] // TODO: complex interaction between ref def and setext heading
     fn example_216() {
         let doc = parse("[foo]: /url\n===\n[foo]\n");
         // "===" is not a setext heading (no preceding paragraph content)

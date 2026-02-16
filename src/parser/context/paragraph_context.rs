@@ -46,9 +46,10 @@ impl ParagraphContext {
         // 중요: Thematic Break보다 먼저 확인해야 함 (---가 Setext 밑줄로 해석됨)
         if let Ok(HeadingSetextStartReason::Started(start)) = try_start_heading_setext(trimmed, indent) {
             let text = self.pending_lines.join("\n");
-            let node = crate::node::BlockNode::Heading(HeadingNode::new(
+            let node = crate::node::BlockNode::Heading(HeadingNode::with_raw_text(
                 start.level.to_level(),
                 inline::parse_inlines(&text),
+                &text,
             ));
             return (vec![node], ParsingContext::None(NoneContext));
         }
