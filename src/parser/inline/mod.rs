@@ -36,7 +36,12 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
                 } else {
                     match backslash_escape::try_escape(&raw[pos..]) {
                         Some((escaped_char, consumed)) => {
-                            push_text_char(&mut result, escaped_char);
+                            if force_new_text {
+                                result.push(InlineNode::Text(TextNode(escaped_char.to_string())));
+                                force_new_text = false;
+                            } else {
+                                push_text_char(&mut result, escaped_char);
+                            }
                             pos += consumed;
                         }
                         None => {
@@ -794,9 +799,7 @@ mod tests {
     }
 
     // Example 437: foo *\**
-    // FIXME: backslash escape: *\** → emphasis 내부 escaped * 처리 실패
     #[test]
-    #[ignore]
     fn example_437() {
         assert_eq!(parse_inlines("foo *\\**"), vec![InlineNode::text("foo "), InlineNode::emphasis(vec![InlineNode::text("*")])]);
     }
@@ -814,9 +817,7 @@ mod tests {
     }
 
     // Example 440: foo **\***
-    // FIXME: backslash escape: **\*** → strong 내부 escaped * 처리 실패
     #[test]
-    #[ignore]
     fn example_440() {
         assert_eq!(parse_inlines("foo **\\***"), vec![InlineNode::text("foo "), InlineNode::strong(vec![InlineNode::text("*")])]);
     }
@@ -870,9 +871,7 @@ mod tests {
     }
 
     // Example 449: foo _\__
-    // FIXME: backslash escape: _\__ → emphasis 내부 escaped _ 처리 실패
     #[test]
-    #[ignore]
     fn example_449() {
         assert_eq!(parse_inlines("foo _\\__"), vec![InlineNode::text("foo "), InlineNode::emphasis(vec![InlineNode::text("_")])]);
     }
@@ -890,9 +889,7 @@ mod tests {
     }
 
     // Example 452: foo __\___
-    // FIXME: backslash escape: __\___ → strong 내부 escaped _ 처리 실패
     #[test]
-    #[ignore]
     fn example_452() {
         assert_eq!(parse_inlines("foo __\\___"), vec![InlineNode::text("foo "), InlineNode::strong(vec![InlineNode::text("_")])]);
     }
