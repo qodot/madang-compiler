@@ -389,6 +389,967 @@ mod tests {
         }
     }
 
+    // Example 193: link ref def with indentation
+    #[test]
+    fn example_193() {
+        let doc = parse("   [foo]: \n      /url  \n           'the title'  \n\n[foo]\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url", Some("the title"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 194: link ref def with special chars in label
+    #[test]
+    fn example_194() {
+        let doc = parse("[Foo*bar\\]]:my_(url) 'title (with parens)'\n\n[Foo*bar\\]]\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("Foo*bar]")], "my_(url)", Some("title (with parens)"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 195: link ref def with angle-bracket destination
+    #[test]
+    #[ignore] // TODO: angle-bracket destination with spaces in ref def
+    fn example_195() {
+        let doc = parse("[Foo bar]:\n<my url>\n'title'\n\n[Foo bar]\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("Foo bar")], "my%20url", Some("title"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 196: multiline title in link ref def
+    #[test]
+    fn example_196() {
+        let doc = parse("[foo]: /url '\ntitle\nline1\nline2\n'\n\n[foo]\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url", Some("\ntitle\nline1\nline2\n"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 197: blank line in title → not a ref def
+    #[test]
+    fn example_197() {
+        let doc = parse("[foo]: /url 'title\n\nwith blank line'\n\n[foo]\n");
+        // Not a valid ref def, so [foo] is not resolved
+        assert!(doc.children.len() >= 3);
+    }
+
+    // Example 198: ref def with destination on next line
+    #[test]
+    fn example_198() {
+        let doc = parse("[foo]:\n/url\n\n[foo]\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 199: ref def with no destination → not valid
+    #[test]
+    fn example_199() {
+        let doc = parse("[foo]:\n\n[foo]\n");
+        // Not a valid ref def
+        assert!(doc.children.len() >= 2);
+    }
+
+    // Example 200: ref def with empty angle-bracket destination
+    #[test]
+    fn example_200() {
+        let doc = parse("[foo]: <>\n\n[foo]\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 201: ref def with angle dest followed by parens → not valid
+    #[test]
+    fn example_201() {
+        let doc = parse("[foo]: <bar>(baz)\n\n[foo]\n");
+        assert!(doc.children.len() >= 2);
+    }
+
+    // Example 202: backslash escapes in destination and title
+    #[test]
+    #[ignore] // TODO: backslash escape handling in ref def destination/title
+    fn example_202() {
+        let doc = parse("[foo]: /url\\bar\\*baz \"foo\\\"bar\\baz\"\n\n[foo]\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url%5Cbar*baz", Some("foo\"bar\\baz"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 203: ref def after usage
+    #[test]
+    fn example_203() {
+        let doc = parse("[foo]\n\n[foo]: url\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "url", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 204: duplicate ref def → first wins
+    #[test]
+    fn example_204() {
+        let doc = parse("[foo]\n\n[foo]: first\n[foo]: second\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "first", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 205: case-insensitive ref labels
+    #[test]
+    fn example_205() {
+        let doc = parse("[FOO]: /url\n\n[Foo]\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("Foo")], "/url", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 206: unicode case folding
+    #[test]
+    fn example_206() {
+        let doc = parse("[ΑΓΩ]: /φου\n\n[αγω]\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 207: ref def only → no output
+    #[test]
+    fn example_207() {
+        let doc = parse("[foo]: /url\n");
+        assert_eq!(doc.children.len(), 0);
+    }
+
+    // Example 208: multiline ref label + remaining text
+    #[test]
+    fn example_208() {
+        let doc = parse("[\nfoo\n]: /url\nbar\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![InlineNode::text("bar")]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 209: trailing content after title → not a ref def
+    #[test]
+    fn example_209() {
+        let doc = parse("[foo]: /url \"title\" ok\n");
+        assert_eq!(doc.children.len(), 1);
+        assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
+    }
+
+    // Example 210: title on next line without belonging to ref def
+    #[test]
+    #[ignore] // TODO: title on next line handling
+    fn example_210() {
+        let doc = parse("[foo]: /url\n\"title\" ok\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![InlineNode::text("\"title\" ok")]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 211: indented code block → not a ref def
+    #[test]
+    fn example_211() {
+        let doc = parse("    [foo]: /url \"title\"\n\n[foo]\n");
+        assert_eq!(doc.children.len(), 2);
+        assert!(matches!(&doc.children[0], BlockNode::CodeBlock(_)));
+        assert!(matches!(&doc.children[1], BlockNode::Paragraph(_)));
+    }
+
+    // Example 212: fenced code block → not a ref def
+    #[test]
+    fn example_212() {
+        let doc = parse("```\n[foo]: /url\n```\n\n[foo]\n");
+        assert_eq!(doc.children.len(), 2);
+        assert!(matches!(&doc.children[0], BlockNode::CodeBlock(_)));
+        assert!(matches!(&doc.children[1], BlockNode::Paragraph(_)));
+    }
+
+    // Example 213: ref def inside paragraph → not extracted
+    #[test]
+    fn example_213() {
+        let doc = parse("Foo\n[bar]: /baz\n\n[bar]\n");
+        // [bar] should NOT be resolved since the ref def is inside a paragraph
+        assert_eq!(doc.children.len(), 2);
+    }
+
+    // Example 214: heading + ref def + blockquote
+    #[test]
+    fn example_214() {
+        let doc = parse("# [Foo]\n[foo]: /url\n> bar\n");
+        assert_eq!(doc.children.len(), 2);
+        assert!(matches!(&doc.children[0], BlockNode::Heading(_)));
+        assert!(matches!(&doc.children[1], BlockNode::Blockquote(_)));
+    }
+
+    // Example 215: ref def + setext heading
+    #[test]
+    #[ignore] // TODO: ref def followed by setext heading — ref not extracted when combined with setext
+    fn example_215() {
+        let doc = parse("[foo]: /url\nbar\n===\n[foo]\n");
+        // ref def extracted, "bar\n===" becomes setext h1, then [foo] paragraph
+        assert_eq!(doc.children.len(), 2);
+        assert!(matches!(&doc.children[0], BlockNode::Heading(_)));
+        if let BlockNode::Paragraph(p) = &doc.children[1] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 216: ref def label looks like setext underline
+    #[test]
+    #[ignore] // TODO: complex interaction between ref def and setext heading
+    fn example_216() {
+        let doc = parse("[foo]: /url\n===\n[foo]\n");
+        // "===" is not a setext heading (no preceding paragraph content)
+        // so it becomes paragraph text
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 217: multiple ref defs
+    #[test]
+    fn example_217() {
+        let doc = parse("[foo]: /foo-url \"foo\"\n[bar]: /bar-url\n  \"bar\"\n[baz]: /baz-url\n\n[foo],\n[bar],\n[baz]\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            // Should contain 3 links interspersed with commas and softbreaks
+            assert!(p.children.iter().any(|c| matches!(c, InlineNode::Link(_))));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 218: ref def inside blockquote
+    #[test]
+    fn example_218() {
+        let doc = parse("[foo]\n\n> [foo]: /url\n");
+        // Spec says [foo] should resolve even though ref def is in blockquote
+        assert_eq!(doc.children.len(), 2);
+    }
+
+    // =========================================================================
+    // Reference Links (Examples 527-571)
+    // =========================================================================
+
+    // Example 527: full reference link [foo][bar]
+    #[test]
+    fn example_527() {
+        let doc = parse("[foo][bar]\n\n[bar]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url", Some("title"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 528: nested brackets in link text
+    #[test]
+    fn example_528() {
+        let doc = parse("[link [foo [bar]]][ref]\n\n[ref]: /uri\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("link [foo [bar]]")], "/uri", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 529: escaped bracket in link text
+    #[test]
+    fn example_529() {
+        let doc = parse("[link \\[bar][ref]\n\n[ref]: /uri\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("link [bar")], "/uri", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 530: inline formatting in link text
+    #[test]
+    fn example_530() {
+        let doc = parse("[link *foo **bar** `#`*][ref]\n\n[ref]: /uri\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(
+                    vec![
+                        InlineNode::text("link "),
+                        InlineNode::emphasis(vec![
+                            InlineNode::text("foo "),
+                            InlineNode::strong(vec![InlineNode::text("bar")]),
+                            InlineNode::text(" "),
+                            InlineNode::code_span("#"),
+                        ]),
+                    ],
+                    "/uri",
+                    None,
+                )
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 531: image inside reference link
+    #[test]
+    fn example_531() {
+        let doc = parse("[![moon](moon.jpg)][ref]\n\n[ref]: /uri\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(
+                    vec![InlineNode::image(vec![InlineNode::text("moon")], "moon.jpg", None)],
+                    "/uri",
+                    None,
+                )
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 532: link inside link text → not nested
+    #[test]
+    fn example_532() {
+        let doc = parse("[foo [bar](/uri)][ref]\n\n[ref]: /uri\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 533: emphasis + link inside link text
+    #[test]
+    fn example_533() {
+        let doc = parse("[foo *bar [baz][ref]*][ref]\n\n[ref]: /uri\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 534: emphasis delimiter mismatch with ref link
+    #[test]
+    fn example_534() {
+        let doc = parse("*[foo*][ref]\n\n[ref]: /uri\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 535: unmatched emphasis around ref link
+    #[test]
+    fn example_535() {
+        let doc = parse("[foo *bar][ref]*\n\n[ref]: /uri\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo *bar")], "/uri", None),
+                InlineNode::text("*"),
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 536: raw HTML prevents ref link
+    #[test]
+    fn example_536() {
+        let doc = parse("[foo <bar attr=\"][ref]\">\n\n[ref]: /uri\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 537: code span prevents ref link
+    #[test]
+    fn example_537() {
+        let doc = parse("[foo`][ref]`\n\n[ref]: /uri\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            // [foo is text, `][ref]` is code span
+            assert!(p.children.iter().any(|c| matches!(c, InlineNode::CodeSpan(_))));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 538: autolink prevents ref link
+    #[test]
+    fn example_538() {
+        let doc = parse("[foo<https://example.com/?search=][ref]>\n\n[ref]: /uri\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 539: case-insensitive ref label
+    #[test]
+    fn example_539() {
+        let doc = parse("[foo][BaR]\n\n[bar]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url", Some("title"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 540: unicode case folding in ref
+    #[test]
+    fn example_540() {
+        let doc = parse("[ẞ]\n\n[SS]: /url\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 541: multiline ref label
+    #[test]
+    fn example_541() {
+        let doc = parse("[Foo\n  bar]: /url\n\n[Baz][Foo bar]\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 542: space between link text and ref label → not a ref link
+    #[test]
+    fn example_542() {
+        let doc = parse("[foo] [bar]\n\n[bar]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            // [foo] is text, [bar] resolves as shortcut ref link
+            assert!(p.children.len() >= 2);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 543: newline between brackets → not a ref link
+    #[test]
+    fn example_543() {
+        let doc = parse("[foo]\n[bar]\n\n[bar]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            // [foo] is text, soft break, [bar] resolves
+            assert!(p.children.iter().any(|c| matches!(c, InlineNode::Link(_))));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 544: first ref def wins
+    #[test]
+    fn example_544() {
+        let doc = parse("[foo]: /url1\n\n[foo]: /url2\n\n[bar][foo]\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("bar")], "/url1", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 545: escaped char in ref label → no match
+    #[test]
+    fn example_545() {
+        let doc = parse("[bar][foo\\!]\n\n[foo!]: /url\n");
+        // Should NOT match because foo\! ≠ foo!
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 546: unclosed bracket in ref label
+    #[test]
+    fn example_546() {
+        let doc = parse("[foo][ref[]\n\n[ref[]: /uri\n");
+        // Not valid ref links
+        assert!(doc.children.len() >= 2);
+    }
+
+    // Example 547: nested brackets in ref label
+    #[test]
+    fn example_547() {
+        let doc = parse("[foo][ref[bar]]\n\n[ref[bar]]: /uri\n");
+        assert!(doc.children.len() >= 2);
+    }
+
+    // Example 548: triple nested brackets
+    #[test]
+    fn example_548() {
+        let doc = parse("[[[foo]]]\n\n[[[foo]]]: /url\n");
+        assert!(doc.children.len() >= 2);
+    }
+
+    // Example 549: escaped bracket in ref label
+    #[test]
+    #[ignore] // TODO: escaped bracket in ref label — ref def with `ref\[` not matched correctly
+    fn example_549() {
+        let doc = parse("[foo][ref\\[]\n\n[ref\\[]: /uri\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/uri", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 550: escaped backslash in ref label
+    #[test]
+    fn example_550() {
+        let doc = parse("[bar\\\\]: /uri\n\n[bar\\\\]\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("bar\\")], "/uri", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 551: empty ref label
+    #[test]
+    fn example_551() {
+        let doc = parse("[]\n\n[]: /uri\n");
+        assert!(doc.children.len() >= 2);
+    }
+
+    // Example 552: blank ref label
+    #[test]
+    fn example_552() {
+        let doc = parse("[\n ]\n\n[\n ]: /uri\n");
+        assert!(doc.children.len() >= 2);
+    }
+
+    // Example 553: collapsed reference link [foo][]
+    #[test]
+    fn example_553() {
+        let doc = parse("[foo][]\n\n[foo]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url", Some("title"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 554: collapsed ref with inline formatting
+    #[test]
+    fn example_554() {
+        let doc = parse("[*foo* bar][]\n\n[*foo* bar]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 555: collapsed ref case-insensitive
+    #[test]
+    fn example_555() {
+        let doc = parse("[Foo][]\n\n[foo]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("Foo")], "/url", Some("title"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 556: space between ] and [] → shortcut, not collapsed
+    #[test]
+    fn example_556() {
+        let doc = parse("[foo] \n[]\n\n[foo]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 557: shortcut reference link [foo]
+    #[test]
+    fn example_557() {
+        let doc = parse("[foo]\n\n[foo]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url", Some("title"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 558: shortcut ref with inline formatting
+    #[test]
+    fn example_558() {
+        let doc = parse("[*foo* bar]\n\n[*foo* bar]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 559: double bracket [[*foo* bar]]
+    #[test]
+    fn example_559() {
+        let doc = parse("[[*foo* bar]]\n\n[*foo* bar]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 560: [[bar [foo]
+    #[test]
+    fn example_560() {
+        let doc = parse("[[bar [foo]\n\n[foo]: /url\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            // [[bar then [foo] link
+            assert!(p.children.iter().any(|c| matches!(c, InlineNode::Link(_))));
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 561: shortcut ref case-insensitive
+    #[test]
+    fn example_561() {
+        let doc = parse("[Foo]\n\n[foo]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("Foo")], "/url", Some("title"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 562: shortcut ref followed by text
+    #[test]
+    fn example_562() {
+        let doc = parse("[foo] bar\n\n[foo]: /url\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url", None),
+                InlineNode::text(" bar"),
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 563: escaped [ → not a ref link
+    #[test]
+    fn example_563() {
+        let doc = parse("\\[foo]\n\n[foo]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![InlineNode::text("[foo]")]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 564: shortcut ref with * in label
+    #[test]
+    fn example_564() {
+        let doc = parse("[foo*]: /url\n\n*[foo*]\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 565: full ref link takes precedence
+    #[test]
+    fn example_565() {
+        let doc = parse("[foo][bar]\n\n[foo]: /url1\n[bar]: /url2\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url2", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 566: collapsed ref [foo][]
+    #[test]
+    fn example_566() {
+        let doc = parse("[foo][]\n\n[foo]: /url1\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url1", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 567: inline link takes precedence over ref
+    #[test]
+    fn example_567() {
+        let doc = parse("[foo]()\n\n[foo]: /url1\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 568: failed inline link → falls back to ref
+    #[test]
+    fn example_568() {
+        let doc = parse("[foo](not a link)\n\n[foo]: /url1\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::link(vec![InlineNode::text("foo")], "/url1", None),
+                InlineNode::text("(not a link)"),
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 569: [foo][bar][baz] with only [baz] defined
+    #[test]
+    fn example_569() {
+        let doc = parse("[foo][bar][baz]\n\n[baz]: /url\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 570: [foo][bar][baz] with both defined
+    #[test]
+    fn example_570() {
+        let doc = parse("[foo][bar][baz]\n\n[baz]: /url1\n[bar]: /url2\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 571: [foo][bar][baz] with [baz] and [foo] defined
+    #[test]
+    fn example_571() {
+        let doc = parse("[foo][bar][baz]\n\n[baz]: /url1\n[foo]: /url2\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // =========================================================================
+    // Reference Images (Examples 573-591)
+    // =========================================================================
+
+    // Example 573: reference image
+    #[test]
+    fn example_573() {
+        let doc = parse("![foo *bar*]\n\n[foo *bar*]: train.jpg \"train & tracks\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::image(
+                    vec![InlineNode::text("foo "), InlineNode::emphasis(vec![InlineNode::text("bar")])],
+                    "train.jpg",
+                    Some("train & tracks"),
+                )
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 576: collapsed reference image ![foo *bar*][]
+    #[test]
+    fn example_576() {
+        let doc = parse("![foo *bar*][]\n\n[foo *bar*]: train.jpg \"train & tracks\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::image(
+                    vec![InlineNode::text("foo "), InlineNode::emphasis(vec![InlineNode::text("bar")])],
+                    "train.jpg",
+                    Some("train & tracks"),
+                )
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 577: reference image with different label
+    #[test]
+    fn example_577() {
+        let doc = parse("![foo *bar*][foobar]\n\n[FOOBAR]: train.jpg \"train & tracks\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::image(
+                    vec![InlineNode::text("foo "), InlineNode::emphasis(vec![InlineNode::text("bar")])],
+                    "train.jpg",
+                    Some("train & tracks"),
+                )
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 582: reference image ![foo][bar]
+    #[test]
+    fn example_582() {
+        let doc = parse("![foo][bar]\n\n[bar]: /url\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::image(vec![InlineNode::text("foo")], "/url", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 583: reference image case-insensitive
+    #[test]
+    fn example_583() {
+        let doc = parse("![foo][bar]\n\n[BAR]: /url\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::image(vec![InlineNode::text("foo")], "/url", None)
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 584: collapsed reference image ![foo][]
+    #[test]
+    fn example_584() {
+        let doc = parse("![foo][]\n\n[foo]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::image(vec![InlineNode::text("foo")], "/url", Some("title"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 585: collapsed ref image with formatting
+    #[test]
+    fn example_585() {
+        let doc = parse("![*foo* bar][]\n\n[*foo* bar]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 586: collapsed ref image case-insensitive
+    #[test]
+    fn example_586() {
+        let doc = parse("![Foo][]\n\n[foo]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::image(vec![InlineNode::text("Foo")], "/url", Some("title"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 587: space before [] → shortcut, not collapsed
+    #[test]
+    fn example_587() {
+        let doc = parse("![foo] \n[]\n\n[foo]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 588: shortcut reference image ![foo]
+    #[test]
+    fn example_588() {
+        let doc = parse("![foo]\n\n[foo]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::image(vec![InlineNode::text("foo")], "/url", Some("title"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
+    // Example 589: shortcut ref image with formatting
+    #[test]
+    fn example_589() {
+        let doc = parse("![*foo* bar]\n\n[*foo* bar]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+    }
+
+    // Example 591: shortcut ref image case-insensitive
+    #[test]
+    fn example_591() {
+        let doc = parse("![Foo]\n\n[foo]: /url \"title\"\n");
+        assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Paragraph(p) = &doc.children[0] {
+            assert_eq!(p.children, vec![
+                InlineNode::image(vec![InlineNode::text("Foo")], "/url", Some("title"))
+            ]);
+        } else {
+            panic!("Expected paragraph");
+        }
+    }
+
     // Example 57: list → thematic break → list
     #[test]
     fn example_57() {
