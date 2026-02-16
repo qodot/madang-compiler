@@ -160,16 +160,34 @@ pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
                     if bracket.active && pos + 1 < raw.len() && bytes[pos + 1] == b'(' {
                         // `](` → 인라인 링크 시도
                         if let Some(dest) = link::parse_link_destination(&raw[pos + 1..]) {
-                            // link text: bracket.node_index+1 ~ result.len()-1
-                            let children: Vec<InlineNode> = result
-                                .drain((bracket.node_index + 1)..)
+                            let bracket_pos = bracket.node_index;
+
+                            // delimiter를 bracket 기준으로 분할
+                            let split_idx = delimiters
+                                .iter()
+                                .position(|d| d.position > bracket_pos)
+                                .unwrap_or(delimiters.len());
+                            let child_delims: Vec<DelimiterRun> = delimiters
+                                .split_off(split_idx)
+                                .into_iter()
+                                .map(|mut d| {
+                                    d.position -= bracket_pos + 1;
+                                    d
+                                })
                                 .collect();
-                            // bracket의 `[` 텍스트 제거
+
+                            // children 추출
+                            let children: Vec<InlineNode> = result
+                                .drain((bracket_pos + 1)..)
+                                .collect();
                             result.pop(); // remove the `[` text node
 
-                            // children에서 emphasis 처리
-                            // (delimiter는 bracket 이후 것만 처리해야 하지만
-                            //  현재는 전체 emphasis를 나중에 처리하므로 일단 그대로)
+                            // children에 emphasis 처리 적용
+                            let children = if !child_delims.is_empty() {
+                                emphasis::process_emphasis(children, child_delims)
+                            } else {
+                                children
+                            };
 
                             let link_node = InlineNode::Link(LinkNode::new(
                                 children,
@@ -1427,7 +1445,6 @@ mod tests {
 
     // Example 516: [link *foo **bar** `#`*](/uri) — emphasis inside link
     #[test]
-    #[ignore] // TODO: emphasis processing panics (index out of bounds) when emphasis is inside link children
     fn example_516() {
         assert_eq!(
             parse_inlines("[link *foo **bar** `#`*](/uri)"),
@@ -1488,7 +1505,6 @@ mod tests {
 
     // Example 521: *[foo*](/uri) — emphasis delimiter inside link text
     #[test]
-    #[ignore] // TODO: emphasis processing panics (index out of bounds) when emphasis delimiter spans link boundary
     fn example_521() {
         assert_eq!(
             parse_inlines("*[foo*](/uri)"),
