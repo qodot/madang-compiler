@@ -2,7 +2,7 @@
 //!
 //! 4칸 들여쓰기로 작성된 코드 블록을 파싱합니다.
 
-use super::helpers::count_leading_char;
+use super::helpers::{calculate_indent, count_leading_char};
 
 // =============================================================================
 // 타입 정의
@@ -40,11 +40,11 @@ pub enum CodeBlockIndentedNotStartReason {
 pub(crate) fn try_start(
     line: &str,
 ) -> Result<CodeBlockIndentedStartReason, CodeBlockIndentedNotStartReason> {
-    // 1. 들여쓰기 확인 (4칸 이상이면 코드 줄)
-    let indent = count_leading_char(line, ' ');
+    // 1. 들여쓰기 확인 (4칸 이상이면 코드 줄, 탭은 4칸 탭 스톱으로 계산)
+    let indent = calculate_indent(line);
     if indent >= 4 {
-        // 4칸 제거 후 내용 반환 (공백만 있는 줄도 코드의 일부)
-        let content = line[4..].to_string();
+        // 4칸 제거 후 내용 반환
+        let content = remove_leading_indent(line, 4);
         return Ok(CodeBlockIndentedStartReason::Started(
             CodeBlockIndentedStart { content },
         ));
@@ -56,6 +56,38 @@ pub(crate) fn try_start(
     }
 
     Err(CodeBlockIndentedNotStartReason::InsufficientIndent)
+}
+
+/// 줄 앞에서 n칸의 indent를 제거 (탭은 4칸 탭 스톱으로 계산)
+fn remove_leading_indent(line: &str, n: usize) -> String {
+    let mut col = 0;
+    let mut byte_pos = 0;
+
+    for (i, c) in line.char_indices() {
+        if col >= n {
+            byte_pos = i;
+            return line[byte_pos..].to_string();
+        }
+        match c {
+            ' ' => col += 1,
+            '\t' => {
+                let tab_width = 4 - (col % 4);
+                col += tab_width;
+                if col > n {
+                    // 탭이 n칸을 넘어서면 남은 공백을 spaces로 채움
+                    let remaining_spaces = col - n;
+                    return " ".repeat(remaining_spaces) + &line[i + 1..];
+                }
+            }
+            _ => {
+                byte_pos = i;
+                return line[byte_pos..].to_string();
+            }
+        }
+        byte_pos = i + c.len_utf8();
+    }
+
+    String::new()
 }
 
 #[cfg(test)]
@@ -162,7 +194,8 @@ mod tests {
     #[case("    a\ta\n    ὐ\ta", vec![BlockNode::code_block(None, "a\ta\nὐ\ta")])]
     // Example 8: space + tab 혼용 (4칸 space 인덴트 후, 다음 줄은 탭으로 인덴트)
     #[case("    foo\n\tbar", vec![BlockNode::code_block(None, "foo\nbar")])]
-    #[ignore = "탭 처리 미지원"]
-    fn test_code_block_indented_tabs(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
+    fn test_code_block_indented_tabs(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = crate::parse(input);
+        assert_eq!(doc.children, expected);
     }
 }
