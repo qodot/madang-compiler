@@ -182,7 +182,15 @@ mod tests {
         assert_eq!(doc.children, expected);
     }
 
-    // TODO: 현재 파서 미지원 케이스
+    // Example 252: blockquote 내 5칸 들여쓰기 → 코드블록, 4칸은 paragraph
+    #[rstest]
+    #[case(">     code\n\n>    not code", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "code")]), BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("not code")])])])]
+    fn test_blockquote_code(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse(input);
+        assert_eq!(doc.children, expected);
+    }
+
+    // TODO: 현재 파서 미지원 케이스 (lazy continuation 등)
     #[rstest]
     // Example 235: Laziness 한계 - list가 blockquote 중단
     #[case("> - foo\n- bar", vec![BlockNode::blockquote(vec![BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])])])]), BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])])])])]
@@ -192,9 +200,7 @@ mod tests {
     #[case("> ```\nfoo\n```", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "")]), BlockNode::paragraph(vec![InlineNode::text("foo")]), BlockNode::code_block(None, "")])]
     // Example 249: 빈 blockquote 줄 후 paragraph
     #[case("> bar\n>\nbaz", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])]), BlockNode::paragraph(vec![InlineNode::text("baz")])])]
-    // Example 252: blockquote 내 5칸 들여쓰기 → 코드블록, 4칸은 paragraph
-    #[case(">     code\n\n>    not code", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "code")]), BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("not code")])])])]
-    #[ignore = "blockquote 내 indented code block 미지원"]
+    #[ignore = "lazy continuation/multi-block blockquote 미지원"]
     fn test_blockquote_pending(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
@@ -204,7 +210,7 @@ mod tests {
     #[rstest]
     // Example 6: > 뒤 탭 → 탭이 3칸 공백으로 확장, 1칸은 구분자 → 코드 블록 (2칸 들여쓰기)
     #[case(">\t\tfoo", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "  foo")])])]
-    #[ignore = "탭 처리 미지원"]
+    
     fn test_blockquote_tabs(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
     }
 }

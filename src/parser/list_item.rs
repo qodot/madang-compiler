@@ -624,7 +624,8 @@ mod tests {
             ]),
         ])
     ])]
-    #[ignore = "현재 파서 미지원 (빈 줄 시작 아이템, blockquote 내 리스트, indented code 시작)"]
+    
+    #[ignore = "빈 줄 시작 아이템, blockquote 내 리스트, indented code 시작 미지원"]
     fn test_list_item_pending(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse_doc(input);
         assert_eq!(doc.children, expected);
