@@ -67,6 +67,10 @@ fn parse_start(line: &str) -> Result<CodeBlockFencedOk, CodeBlockFencedErr> {
         if trimmed.is_empty() {
             None
         } else {
+            // backtick fence의 info string에 backtick이 포함되면 fenced code block 아님
+            if fence_char == '`' && trimmed.contains('`') {
+                return Err(CodeBlockFencedErr::NoFence);
+            }
             Some(trimmed.to_string())
         }
     };
