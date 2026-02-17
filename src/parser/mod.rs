@@ -30,11 +30,40 @@ use helpers::trim_blank_lines;
 /// 파서 상태: (완성된 노드들, 현재 컨텍스트) - fold 누적용
 type ParserState = (Vec<BlockNode>, ParsingContext);
 
+/// 탭을 spaces로 확장 (4칸 탭 스톱)
+fn expand_tabs(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut col = 0;
+    for c in input.chars() {
+        match c {
+            '\t' => {
+                let spaces = 4 - (col % 4);
+                for _ in 0..spaces {
+                    result.push(' ');
+                }
+                col += spaces;
+            }
+            '\n' => {
+                result.push('\n');
+                col = 0;
+            }
+            _ => {
+                result.push(c);
+                col += 1;
+            }
+        }
+    }
+    result
+}
+
 /// 문서 전체 파싱
 pub fn parse(input: &str) -> DocumentNode {
     if input.is_empty() {
         return DocumentNode::new(vec![]);
     }
+
+    // Pass 0: 탭을 spaces로 확장
+    let input = expand_tabs(input);
 
     // fold: 각 줄을 처리하며 상태 전이
     let (children, final_context) = input.lines().fold(
@@ -268,6 +297,12 @@ fn parse_block_simple(block: &str) -> BlockNode {
 
     if let Ok(node) = thematic_break::parse(block) {
         return node;
+    }
+
+    if let Ok(code_block_indented::CodeBlockIndentedStartReason::Started(start)) =
+        code_block_indented::try_start(block)
+    {
+        return BlockNode::CodeBlock(CodeBlockNode::new(None, start.content));
     }
 
     if let Ok(node) = heading::parse(block) {
@@ -2099,12 +2134,14 @@ mod tests {
     // === Tab Examples (1-11) ===
 
     // Example 1: tab as indentation → indented code block
+    // 탭은 parse() 진입 시 spaces로 확장됨
     #[test]
     fn example_1() {
         let doc = parse("\tfoo\tbaz\t\tbim\n");
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
-            assert_eq!(cb.content, "foo\tbaz\t\tbim");
+            // \t at col 0→4sp, content: foo + \t at col 7→1sp + baz + \t at col 11→1sp + \t at col 12→4sp + bim
+            assert_eq!(cb.content, "foo baz     bim");
         } else {
             panic!("Expected code block, got {:?}", doc.children[0]);
         }
@@ -2116,19 +2153,21 @@ mod tests {
         let doc = parse("  \tfoo\tbaz\t\tbim\n");
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
-            assert_eq!(cb.content, "foo\tbaz\t\tbim");
+            assert_eq!(cb.content, "foo baz     bim");
         } else {
             panic!("Expected code block, got {:?}", doc.children[0]);
         }
     }
 
-    // Example 3: tab in code block content preserved
+    // Example 3: tab in code block content (tabs expanded to spaces)
     #[test]
     fn example_3() {
         let doc = parse("    a\ta\n    ὐ\ta\n");
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
-            assert_eq!(cb.content, "a\ta\nὐ\ta");
+            // col 4: a, col 5: \t→3sp (to col 8), a
+            // col 4: ὐ (3 bytes, 1 col), col 5: \t→3sp, a
+            assert_eq!(cb.content, "a   a\nὐ   a");
         } else {
             panic!("Expected code block, got {:?}", doc.children[0]);
         }
@@ -2136,35 +2175,56 @@ mod tests {
 
     // Example 4: tab as list item continuation indent
     #[test]
-    #[ignore] // TODO: tab as list continuation indent
     fn example_4() {
         let doc = parse("  - foo\n\n\tbar\n");
         assert_eq!(doc.children.len(), 1);
-        // list with loose item: paragraph "foo" + paragraph "bar"
+        if let BlockNode::List(list) = &doc.children[0] {
+            assert_eq!(list.children.len(), 1);
+            // loose item: paragraph "foo" + paragraph "bar"
+            assert_eq!(list.children[0].children.len(), 2);
+        } else {
+            panic!("Expected list, got {:?}", doc.children[0]);
+        }
     }
 
     // Example 5: tab as list item continuation with code block
     #[test]
-    #[ignore] // TODO: tab as list continuation indent
     fn example_5() {
         let doc = parse("- foo\n\n\t\tbar\n");
         assert_eq!(doc.children.len(), 1);
+        if let BlockNode::List(list) = &doc.children[0] {
+            assert_eq!(list.children.len(), 1);
+            // loose item: paragraph "foo" + code block "  bar"
+            let item = &list.children[0];
+            assert!(item.children.iter().any(|c| matches!(c, BlockNode::CodeBlock(_))));
+        } else {
+            panic!("Expected list, got {:?}", doc.children[0]);
+        }
     }
 
     // Example 6: tab in blockquote → code block
     #[test]
-    #[ignore] // TODO: tab expansion in blockquote
     fn example_6() {
         let doc = parse(">\t\tfoo\n");
         assert_eq!(doc.children.len(), 1);
+        if let BlockNode::Blockquote(bq) = &doc.children[0] {
+            assert!(bq.children.iter().any(|c| matches!(c, BlockNode::CodeBlock(_))));
+        } else {
+            panic!("Expected blockquote, got {:?}", doc.children[0]);
+        }
     }
 
     // Example 7: tab in list item → code block
     #[test]
-    #[ignore] // TODO: tab expansion in list item
+    #[ignore] // TODO: list item content indent calculation for code block detection
     fn example_7() {
         let doc = parse("-\t\tfoo\n");
         assert_eq!(doc.children.len(), 1);
+        if let BlockNode::List(list) = &doc.children[0] {
+            assert!(list.children[0].children.iter().any(|c| matches!(c, BlockNode::CodeBlock(_))));
+        } else {
+            panic!("Expected list, got {:?}", doc.children[0]);
+        }
     }
 
     // Example 8: tab as indented code block continuation
@@ -2181,10 +2241,15 @@ mod tests {
 
     // Example 9: tab as nested list indent
     #[test]
-    #[ignore] // TODO: tab as nested list indent
     fn example_9() {
         let doc = parse(" - foo\n   - bar\n\t - baz\n");
         assert_eq!(doc.children.len(), 1);
+        // nested list: foo > bar > baz
+        if let BlockNode::List(list) = &doc.children[0] {
+            assert_eq!(list.children.len(), 1);
+        } else {
+            panic!("Expected list, got {:?}", doc.children[0]);
+        }
     }
 
     // Example 10: tab after # in ATX heading

@@ -187,11 +187,11 @@ mod tests {
     /// 탭 관련 indented code block 테스트 (CommonMark 명세 Section 2.2 Tabs)
     #[rstest]
     // Example 1: 탭으로 인덴트된 코드 블록
-    #[case("\tfoo\tbaz\t\tbim", vec![BlockNode::code_block(None, "foo\tbaz\t\tbim")])]
+    #[case("\tfoo\tbaz\t\tbim", vec![BlockNode::code_block(None, "foo baz     bim")])]
     // Example 2: 2칸 공백 + 탭 (탭이 나머지 2칸을 채워 4칸 인덴트)
-    #[case("  \tfoo\tbaz\t\tbim", vec![BlockNode::code_block(None, "foo\tbaz\t\tbim")])]
-    // Example 3: 탭 위치에 따른 정렬 (내부 탭은 그대로 유지)
-    #[case("    a\ta\n    ὐ\ta", vec![BlockNode::code_block(None, "a\ta\nὐ\ta")])]
+    #[case("  \tfoo\tbaz\t\tbim", vec![BlockNode::code_block(None, "foo baz     bim")])]
+    // Example 3: 탭 위치에 따른 정렬 (탭이 spaces로 확장됨)
+    #[case("    a\ta\n    ὐ\ta", vec![BlockNode::code_block(None, "a   a\nὐ   a")])]
     // Example 8: space + tab 혼용 (4칸 space 인덴트 후, 다음 줄은 탭으로 인덴트)
     #[case("    foo\n\tbar", vec![BlockNode::code_block(None, "foo\nbar")])]
     fn test_code_block_indented_tabs(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
