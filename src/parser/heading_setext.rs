@@ -234,15 +234,7 @@ mod tests {
     // #[case("`Foo\n----\n`", "<h2>`Foo</h2><p>`</p>")]
     // Example 93: lazy continuation in blockquote (복잡한 blockquote 처리 필요)
     // #[case("> foo\nbar\n===", "<blockquote><p>foo\nbar\n===</p></blockquote>")]
-    // Example 99: backslash escape (inline 파싱 필요)
-    // #[case("\\> foo\n------", "<h2>&gt; foo</h2>")]
-    // Example 103: backslash escape prevents setext (inline 파싱 필요)
-    // #[case("Foo\nbar\n\\---\nbaz", "<p>Foo\nbar\n---\nbaz</p>")]
-    #[case("placeholder", "placeholder")]
-    #[ignore = "inline 파싱 미구현으로 보류"]
-    fn test_setext_heading_pending(#[case] _input: &str, #[case] _expected: &str) {
-        // inline 파싱 구현 후 활성화
-    }
+    // Examples 99, 103: backslash escape in setext — tested in mod.rs integration tests
 
     // === SetextLevel::to_level 테스트 ===
     #[rstest]
