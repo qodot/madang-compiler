@@ -208,7 +208,7 @@ mod tests {
     #[rstest]
     // Example 128: blockquote 내부 닫히지 않은 코드 블록
     #[case("> ```\n> aaa\n\nbbb", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "aaa")]), BlockNode::paragraph(vec![InlineNode::text("bbb")])])]
-    #[ignore = "blockquote 내 코드 블록 미지원"]
+    
     fn test_fenced_code_block_pending(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);

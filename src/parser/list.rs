@@ -249,7 +249,7 @@ mod tests {
     #[case("- a\n  > b\n  ```\n  c\n  ```\n- d", vec![])]
     // Example 324: fenced code + paragraph → loose
     #[case("1. ```\n   foo\n   ```\n\n   bar", vec![])]
-    #[ignore = "HTML block, 빈 아이템, link ref, fenced code 내용 등 미구현"]
+    
     fn test_list_pending(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
         // 이 테스트들은 추가 기능 구현 후 활성화
     }
@@ -290,7 +290,7 @@ mod tests {
             ]),
         ]),
     ])])]
-    #[ignore = "탭 처리 미지원"]
+    
     fn test_list_tabs(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
     }
 }

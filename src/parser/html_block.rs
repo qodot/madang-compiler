@@ -742,7 +742,7 @@ mod tests {
             ]),
         ]
     )]
-    #[ignore = "container block 내부 HTML block 감지 미구현"]
+    
     fn test_html_block_type1_pending(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
     }
 }

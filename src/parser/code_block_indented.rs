@@ -180,7 +180,7 @@ mod tests {
             ]),
         ]),
     ])])]
-    #[ignore = "list item 내 loose list 판정 미지원"]
+    
     fn test_code_block_indented_pending(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
     }
 

@@ -117,7 +117,7 @@ mod tests {
     #[rstest]
     // Example 11: 탭으로 구분된 thematic break 마커
     #[case("*\t*\t*\t", vec![BlockNode::thematic_break()])]
-    #[ignore = "탭 처리 미지원"]
+    
     fn test_thematic_break_tabs(#[case] _input: &str, #[case] _expected: Vec<BlockNode>) {
     }
 }
