@@ -87,7 +87,7 @@ impl NoneContext {
 
         // 나머지는 Paragraph 시작
         let context = ParsingContext::Paragraph(ParagraphContext::new(
-            vec![line.trim().to_string()],
+            vec![line.trim_start().to_string()],
         ));
         (vec![], context)
     }
