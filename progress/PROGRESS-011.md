@@ -1,60 +1,61 @@
-# PROGRESS-011: Emphasis 재작성 + Links + Images 구현
+# Progress 011 — Entity References, Ignored Tests, Tab Processing
 
-**날짜**: 2026-02-15 ~ 2026-02-16
-**테스트**: 825 → 895 passed (+70), 39 → 54 ignored
+## 날짜
+2026-02-16 ~ 2026-02-17
 
-## 완료 항목
+## 주요 작업
 
-### Emphasis process_emphasis 재작성
-- cmark 참조 구현의 알고리즘으로 전면 재작성
-- 기존 2단계(find_matches → build_tree) → 1단계(노드 직접 조작)
-- delimiter run에서 부분 소비 + 재사용 지원
-- 21개 실패 테스트 전부 수정
-- merge_adjacent_text 재귀 처리 (emphasis/strong/link children)
+### 1. Entity/Character References (Examples 25-41)
+- `src/parser/inline/entity.rs` 신규 생성
+- `try_parse_entity()`: named (`&amp;`), decimal (`&#35;`), hex (`&#xcab;`) 세 종류 파싱
+- `resolve_entities()`: 문자열 전체 entity 치환 헬퍼
+- `entities` 크레이트 추가 (HTML5 named entity 조회)
+- `parse_inlines`에서 `&` 만나면 entity 파싱
+- entity로 생성된 문자는 마크다운 구문으로 재해석 안 됨 (스펙 준수)
 
-### Backslash Escape 수정
-- delimiter 뒤 backslash escape가 delimiter 텍스트에 합쳐지는 버그 수정
-- force_new_text 플래그 체크 추가
+### 2. Entity 치환 확장
+- link destination/title: `resolve_entities()` 적용 (Ex 32)
+- ref def destination/title: `resolve_entities()` 적용 (Ex 33)
+- fenced code info string: `resolve_entities()` 적용 (Ex 34)
 
-### Inline Links 구현
-- `LinkNode` (children, destination, title)
-- `link.rs` — parse_link_destination (angle bracket, bare, title)
-- bracket stack으로 `[` / `]` 처리
-- emphasis + link 조합: delimiter를 bracket 기준으로 분할
-- Example 482-526: 42/45 통과
+### 3. Ignored Tests 대거 해결
+- **Ex 493**: angle dest `<foo\>` — backslash escape로 `>` 안 닫힘, 텍스트 처리 (테스트 기대값 수정)
+- **Ex 575**: image 안 link 가능하도록 bracket 비활성화 로직 수정 — 외부 image bracket은 유지
+- **Ex 195, 202**: ref def의 percent-encoding은 렌더러 책임이므로 테스트 기대값 수정
+- **Ex 210**: title 뒤 extra text → title 되돌리고 title 없이 ref def 인정
+- **Ex 549**: full reference link에서 `parse_label` 재사용 (escaped bracket 처리)
+- **Ex 215, 216**: setext heading에서 ref def 추출 — HeadingNode에 `raw_text` 추가, Pass 2에서 heading도 처리
+- **Ex 520**: 복잡한 nested image — bracket 수정 덕에 자동 통과
 
-### Inline Images 구현
-- `ImageNode` (children, destination, title) — Link 구조 재활용
-- `![` bracket 처리, image bracket은 outer bracket 비활성화 안 함
-- Example 572-593: 9/22 통과 (나머지 link ref def 의존)
+### 4. Link Reference Definition 테스트 (서브 에이전트)
+- Examples 193-218, 527-571, 573-591 테스트 추가
+- 26개 unignore 성공
 
-### 기타 소규모 Example 추가
-- Thematic breaks 57-61 (thematic break > list item 우선순위 수정)
-- ATX headings 65, 66, 76
-- Setext headings 99, 103-106
-- List items 286-300 (13통과, 2 ignored)
-- Misc examples: backslash, code span, autolink, hard break, textual content
+### 5. Tab Processing (Examples 1-11)
+- `expand_tabs()`: parse() 진입 시 모든 탭을 4칸 탭 스톱 기준 spaces로 확장
+- `remove_leading_indent()`: 탭 스톱 고려한 indent 제거 헬퍼
+- `calculate_indent()`: 이미 탭 지원 (기존)
+- `parse_block_simple`에 indented code block 감지 추가
+- 코드 블록 content의 탭도 spaces로 확장 (시각적 동일, 구현 단순화)
 
-## 남은 작업
-- **Link Reference Definitions** (27개 Example) — 블록 + 인라인 양쪽 필요
-- **Reference Links/Images** (45+13 Example) — link ref def 구현 후
-- **Entity/Char References** (17개)
-- angle dest escape (`<foo\>`) 1개
-- lazy continuation 2개
-- Example 520 (복잡한 중첩 image)
-- Example 575 (image 내 link → bracket 비활성화 문제)
+### 6. 누락 Example 추가 (서브 에이전트 진행 중)
+- 16개 Examples: 20-23, 138, 145, 187, 188, 226, 333-334, 344-346, 642-643
 
-## 커밋 로그
-- `41b9a37` thematic break examples 57-61
-- `cd5b1ad` ATX heading examples 65, 66, 76
-- `f6fa331` setext heading examples 99, 103-106
-- `f3115f7` misc spec examples
-- `335897a` list items examples 286-300
-- `1d9017e` emphasis examples 350-481
-- `6967566` backslash escape fix
-- `9aedd10` emphasis process_emphasis rewrite
-- `11583c5` inline link parsing
-- `e3c7204` inline link examples 482-526
-- `b84ee64` emphasis within link children fix
-- `947481c` inline image parsing
-- `0cfa993` image examples 572-593
+## 테스트 현황
+- **시작**: 895 passed, 54 ignored
+- **종료**: 1043+ passed, 36 ignored (서브 에이전트 결과 대기)
+
+## 핵심 결정
+- **탭 확장 방식**: 모든 탭을 parse() 진입 시 spaces로 확장 (column tracking 대신)
+  - 장점: 구현 단순, blockquote/list 안에서도 자연스럽게 작동
+  - 단점: 코드 블록 content에서 탭이 spaces로 변환됨
+
+- **HeadingNode에 raw_text 추가**: setext heading에서 ref def 추출을 위해
+  - `PartialEq` 수동 구현으로 raw_text를 비교에서 제외
+
+- **Image bracket 비활성화**: link 완성 시 외부 link bracket만 비활성화, image bracket은 유지
+
+## 남은 과제
+- Lazy continuation (Ex 290, 291) — block parser 구조 변경 필요
+- List item code block indent (Ex 7) — content indent 계산
+- HTML renderer 구현 (percent-encoding 등)
