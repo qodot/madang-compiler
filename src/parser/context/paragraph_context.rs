@@ -46,9 +46,10 @@ impl ParagraphContext {
         // 중요: Thematic Break보다 먼저 확인해야 함 (---가 Setext 밑줄로 해석됨)
         if let Ok(HeadingSetextStartReason::Started(start)) = try_start_heading_setext(trimmed, indent) {
             let text = self.pending_lines.join("\n");
+            let text_trimmed = text.trim_end();
             let node = crate::node::BlockNode::Heading(HeadingNode::with_raw_text(
                 start.level.to_level(),
-                inline::parse_inlines(&text),
+                inline::parse_inlines(text_trimmed),
                 &text,
             ));
             return (vec![node], ParsingContext::None(NoneContext));
@@ -101,7 +102,7 @@ impl ParagraphContext {
             if start.content.is_empty() {
                 // 줄 추가하고 계속
                 let mut pending_lines = self.pending_lines;
-                pending_lines.push(line.trim().to_string());
+                pending_lines.push(line.trim_start().to_string());
                 return (vec![], ParsingContext::Paragraph(ParagraphContext::new(pending_lines)));
             }
             
@@ -110,7 +111,7 @@ impl ParagraphContext {
                 if *num != 1 {
                     // 1이 아닌 숫자로 시작하면 인터럽트 불가
                     let mut pending_lines = self.pending_lines;
-                    pending_lines.push(line.trim().to_string());
+                    pending_lines.push(line.trim_start().to_string());
                     return (vec![], ParsingContext::Paragraph(ParagraphContext::new(pending_lines)));
                 }
             }
@@ -130,7 +131,7 @@ impl ParagraphContext {
 
         // 줄 추가
         let mut pending_lines = self.pending_lines;
-        pending_lines.push(line.trim().to_string());
+        pending_lines.push(line.trim_start().to_string());
         (vec![], ParsingContext::Paragraph(ParagraphContext::new(pending_lines)))
     }
 }

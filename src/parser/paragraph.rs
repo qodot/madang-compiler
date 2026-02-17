@@ -7,8 +7,10 @@ use super::inline::parse_inlines;
 
 /// Paragraph 파싱 (기본 fallback)
 /// 다른 블록 요소가 아닌 경우 항상 Paragraph로 처리
-pub fn parse(trimmed: &str) -> BlockNode {
-    BlockNode::Paragraph(ParagraphNode::with_raw_text(parse_inlines(trimmed), trimmed))
+pub fn parse(text: &str) -> BlockNode {
+    // 마지막 줄의 trailing spaces만 제거 (중간 줄의 trailing spaces는 hard break 용)
+    let trimmed = text.trim_end();
+    BlockNode::Paragraph(ParagraphNode::with_raw_text(parse_inlines(trimmed), text))
 }
 
 #[cfg(test)]

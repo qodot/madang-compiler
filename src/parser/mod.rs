@@ -314,7 +314,7 @@ fn parse_block_simple(block: &str) -> BlockNode {
         return html_block::finalize(vec![block.to_string()]);
     }
 
-    paragraph::parse(block.trim())
+    paragraph::parse(block.trim_start())
 }
 
 /// Pass 2: 모든 paragraph에서 link reference definitions를 추출한다.
@@ -2387,9 +2387,7 @@ mod tests {
     }
 
     // Example 226: trailing spaces cause hard break
-    // TODO: parser doesn't convert trailing spaces to hard breaks
     #[test]
-    #[ignore]
     fn example_226() {
         let doc = parse("aaa     \nbbb     \n");
         assert_eq!(doc.children.len(), 1);
