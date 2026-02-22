@@ -24,16 +24,16 @@ impl HtmlBlockContext {
             Ok(HtmlBlockOk::End) => {
                 // Type 6/7: 빈 줄로 종료 — 빈 줄은 블록에 포함하지 않음
                 // Type 1-5: 종료 줄은 블록에 포함
-                let pending_lines = if self.block_type.ends_on_blank_line() {
-                    self.pending_lines
-                } else {
-                    push_string(self.pending_lines, line.to_string())
-                };
+                let mut pending_lines = self.pending_lines;
+                if !self.block_type.ends_on_blank_line() {
+                    pending_lines.push(line.to_string());
+                }
                 let node = html_block::finalize(pending_lines);
                 (vec![node], ParsingContext::None(NoneContext))
             }
             _ => {
-                let pending_lines = push_string(self.pending_lines, line.to_string());
+                let mut pending_lines = self.pending_lines;
+                pending_lines.push(line.to_string());
                 (
                     vec![],
                     ParsingContext::HtmlBlock(HtmlBlockContext {
@@ -44,9 +44,4 @@ impl HtmlBlockContext {
             }
         }
     }
-}
-
-fn push_string(mut vec: Vec<String>, s: String) -> Vec<String> {
-    vec.push(s);
-    vec
 }
