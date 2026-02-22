@@ -33,10 +33,9 @@ impl ParagraphContext {
         // Fenced Code Block 시작이면 Paragraph 종료 후 Code Block 시작
         if let Ok(CodeBlockFencedOk::Start(start)) = parse_code_block_fenced(line, None) {
             let text = self.pending_lines.join("\n");
-            let context = ParsingContext::CodeBlockFenced {
-                start,
-                content: Vec::new(),
-            };
+            let context = ParsingContext::CodeBlockFenced(
+                super::CodeBlockFencedContext::new(start, Vec::new()),
+            );
             return (vec![paragraph::parse(&text)], context);
         }
 

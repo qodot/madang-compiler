@@ -67,9 +67,7 @@ pub fn parse(input: &str) -> DocumentNode {
 fn process_line(line: &str, context: ParsingContext, nodes: Vec<BlockNode>) -> ParserState {
     let (new_nodes, new_context) = match context {
         ParsingContext::None(ctx) => ctx.parse(line),
-        ParsingContext::CodeBlockFenced { start, content } => {
-            process_line_in_code_block(line, start, content)
-        }
+        ParsingContext::CodeBlockFenced(ctx) => ctx.parse(line),
         ParsingContext::Paragraph(ctx) => ctx.parse(line),
         ParsingContext::Blockquote { pending_lines } => {
             process_line_in_blockquote(line, pending_lines)
@@ -90,27 +88,6 @@ fn process_line(line: &str, context: ParsingContext, nodes: Vec<BlockNode>) -> P
 fn extend_nodes(mut nodes: Vec<BlockNode>, new_nodes: Vec<BlockNode>) -> Vec<BlockNode> {
     nodes.extend(new_nodes);
     nodes
-}
-
-/// Code Block 상태에서 줄 처리
-/// 반환: (새로 완성된 노드들, 새 컨텍스트)
-fn process_line_in_code_block(
-    current_line: &str,
-    start: CodeBlockFencedStart,
-    content: Vec<String>,
-) -> LineResult {
-    match parse_code_block_fenced(current_line, Some(&start)).unwrap() {
-        CodeBlockFencedOk::End => {
-            let node = code_block_fenced::finalize(start, content);
-            (vec![node], ParsingContext::None(NoneContext))
-        }
-        CodeBlockFencedOk::Content(line) => {
-            let content = push_string(content, line);
-            let context = ParsingContext::CodeBlockFenced { start, content };
-            (vec![], context)
-        }
-        CodeBlockFencedOk::Start(_) => unreachable!("parse with Some context should return End or Content"),
-    }
 }
 
 /// Indented Code Block 상태에서 줄 처리
@@ -171,10 +148,9 @@ fn process_line_in_blockquote(current_line: &str, pending_lines: Vec<String>) ->
     // Fenced Code Block 시작이면 Blockquote 종료
     if let Ok(CodeBlockFencedOk::Start(start)) = parse_code_block_fenced(current_line, None) {
         let node = blockquote::finalize(pending_lines, parse_block_simple);
-        let context = ParsingContext::CodeBlockFenced {
-            start,
-            content: Vec::new(),
-        };
+        let context = ParsingContext::CodeBlockFenced(
+            context::CodeBlockFencedContext::new(start, Vec::new()),
+        );
         return (vec![node], context);
     }
 
@@ -287,8 +263,8 @@ fn is_block_structure(line: &str) -> bool {
 fn finalize_context(context: ParsingContext, nodes: Vec<BlockNode>) -> Vec<BlockNode> {
     match context {
         ParsingContext::None(NoneContext) => nodes,
-        ParsingContext::CodeBlockFenced { start, content } => {
-            let node = code_block_fenced::finalize(start, content);
+        ParsingContext::CodeBlockFenced(ctx) => {
+            let node = code_block_fenced::finalize(ctx.start, ctx.content);
             push_node(nodes, node)
         }
         ParsingContext::Paragraph(ctx) => {

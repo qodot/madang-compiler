@@ -2,11 +2,13 @@
 //!
 //! 시작 정보(Start)와 파싱 상태(ParsingContext)를 분리하여 관리합니다.
 
+mod code_block_fenced_context;
 mod html_block_context;
 mod list_context;
 mod none_context;
 mod paragraph_context;
 
+pub use code_block_fenced_context::CodeBlockFencedContext;
 pub use html_block_context::HtmlBlockContext;
 pub use list_context::ListContext;
 pub use none_context::NoneContext;
@@ -35,12 +37,7 @@ pub enum ParsingContext {
     None(NoneContext),
 
     /// Fenced Code Block 파싱 중
-    CodeBlockFenced {
-        /// 시작 정보 (불변)
-        start: CodeBlockFencedStart,
-        /// 축적된 코드 줄 (가변)
-        content: Vec<String>,
-    },
+    CodeBlockFenced(CodeBlockFencedContext),
 
     /// Paragraph 파싱 중 (여러 줄이 하나의 문단)
     Paragraph(ParagraphContext),
