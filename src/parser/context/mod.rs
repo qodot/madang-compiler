@@ -2,6 +2,7 @@
 //!
 //! 시작 정보(Start)와 파싱 상태(ParsingContext)를 분리하여 관리합니다.
 
+mod blockquote_context;
 mod code_block_fenced_context;
 mod code_block_indented_context;
 mod html_block_context;
@@ -9,6 +10,7 @@ mod list_context;
 mod none_context;
 mod paragraph_context;
 
+pub use blockquote_context::BlockquoteContext;
 pub use code_block_fenced_context::CodeBlockFencedContext;
 pub use code_block_indented_context::CodeBlockIndentedContext;
 pub use html_block_context::HtmlBlockContext;
@@ -45,7 +47,7 @@ pub enum ParsingContext {
     Paragraph(ParagraphContext),
 
     /// Blockquote 파싱 중 (여러 줄 수집)
-    Blockquote { pending_lines: Vec<String> },
+    Blockquote(BlockquoteContext),
 
     /// List 파싱 중
     List(ListContext),

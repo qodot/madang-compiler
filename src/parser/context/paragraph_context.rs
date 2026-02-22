@@ -86,9 +86,9 @@ impl ParagraphContext {
         // Blockquote 시작이면 Paragraph 종료 후 Blockquote 시작
         if let Ok(content) = blockquote::parse(line) {
             let text = self.pending_lines.join("\n");
-            let context = ParsingContext::Blockquote {
-                pending_lines: vec![content],
-            };
+            let context = ParsingContext::Blockquote(
+                super::BlockquoteContext::new(vec![content]),
+            );
             return (vec![paragraph::parse(&text)], context);
         }
 

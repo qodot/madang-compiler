@@ -54,9 +54,9 @@ impl NoneContext {
 
         // Blockquote 시작 감지
         if let Ok(content) = blockquote::parse(line) {
-            let context = ParsingContext::Blockquote {
-                pending_lines: vec![content],
-            };
+            let context = ParsingContext::Blockquote(
+                super::BlockquoteContext::new(vec![content]),
+            );
             return (vec![], context);
         }
 
