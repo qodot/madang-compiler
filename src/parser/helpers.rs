@@ -5,16 +5,57 @@ pub(crate) fn count_leading_char(s: &str, c: char) -> usize {
     s.chars().take_while(|&ch| ch == c).count()
 }
 
-/// 들여쓰기 계산 (공백=1, 탭=4)
+/// 들여쓰기 계산 (tab stop 고려, 4칸 단위)
 pub(crate) fn calculate_indent(s: &str) -> usize {
-    s.chars()
-        .take_while(|c| *c == ' ' || *c == '\t')
-        .map(|c| if c == '\t' { 4 } else { 1 })
-        .sum()
+    let mut col = 0;
+    for c in s.chars() {
+        match c {
+            ' ' => col += 1,
+            '\t' => col += 4 - (col % 4),
+            _ => break,
+        }
+    }
+    col
 }
 
-/// 문자열에서 최대 n칸의 공백 제거
+/// n columns만큼 leading whitespace를 소비하고 나머지를 반환
+/// 탭이 partially consumed되면 남은 부분을 spaces로 채움
+pub(crate) fn consume_indent(s: &str, n: usize) -> String {
+    let mut col = 0;
+    let mut chars = s.chars().peekable();
+
+    while let Some(&c) = chars.peek() {
+        if col >= n {
+            break;
+        }
+        match c {
+            ' ' => {
+                col += 1;
+                chars.next();
+            }
+            '\t' => {
+                let tab_width = 4 - (col % 4);
+                if col + tab_width > n {
+                    // 탭이 partially consumed — 남은 cols를 spaces로
+                    let remaining_spaces = (col + tab_width) - n;
+                    chars.next();
+                    let mut result = " ".repeat(remaining_spaces);
+                    result.extend(chars);
+                    return result;
+                }
+                col += tab_width;
+                chars.next();
+            }
+            _ => break,
+        }
+    }
+
+    chars.collect()
+}
+
+/// 문자열에서 최대 n칸의 공백/탭 제거 (tab stop 고려)
 pub(crate) fn remove_indent(s: &str, n: usize) -> &str {
+    // spaces-only fast path (기존 호출 호환)
     let spaces = count_leading_char(s, ' ');
     let remove = spaces.min(n);
     &s[remove..]
@@ -105,21 +146,51 @@ mod tests {
     #[case("  ", 2)]
     #[case("   ", 3)]
     #[case("    ", 4)]
-    // 탭 (1탭 = 4칸)
+    // 탭 (tab stop 기준)
     #[case("\t", 4)]
     #[case("\t\t", 8)]
-    // 공백 + 탭 혼합
-    #[case(" \t", 5)]           // 1 + 4
-    #[case("  \t", 6)]          // 2 + 4
-    #[case("\t ", 5)]           // 4 + 1
+    // 공백 + 탭 혼합 (tab stop 고려)
+    #[case(" \t", 4)]           // col 1 → tab to col 4
+    #[case("  \t", 4)]          // col 2 → tab to col 4
+    #[case("   \t", 4)]         // col 3 → tab to col 4
+    #[case("\t ", 5)]           // col 4 + 1
+    #[case("    \t", 8)]        // col 4 → tab to col 8
     // 텍스트 포함
     #[case("code", 0)]
     #[case(" code", 1)]
     #[case("  code", 2)]
     #[case("\tcode", 4)]
-    #[case("  \tcode", 6)]      // 2 + 4
+    #[case("  \tcode", 4)]      // col 2 → tab to col 4
     fn test_calculate_indent(#[case] input: &str, #[case] expected: usize) {
         assert_eq!(calculate_indent(input), expected);
+    }
+
+    #[rstest]
+    // 기본: spaces 소비
+    #[case("    foo", 4, "foo")]
+    #[case("  foo", 2, "foo")]
+    #[case("  foo", 1, " foo")]
+    #[case("foo", 0, "foo")]
+    #[case("foo", 3, "foo")]           // non-whitespace는 소비 안 함
+    // 탭 소비
+    #[case("\tfoo", 4, "foo")]         // 탭 1개 = 4 cols, 정확히 소비
+    #[case("\t\tfoo", 8, "foo")]
+    #[case("\t\tfoo", 4, "\tfoo")]     // 첫 탭만 소비, 두번째 탭은 그대로 남음
+    // 탭 partial consumption
+    #[case("\tfoo", 1, "   foo")]      // 탭 4cols 중 1만 소비, 3 남음
+    #[case("\tfoo", 2, "  foo")]       // 탭 4cols 중 2 소비, 2 남음
+    #[case("\tfoo", 3, " foo")]        // 탭 4cols 중 3 소비, 1 남음
+    // 혼합
+    #[case(" \tfoo", 4, "foo")]        // space(1) + tab(3) = 4 cols
+    #[case(" \tfoo", 2, "  foo")]      // space(1) 소비, tab 중 1col 소비, 2 남음
+    #[case("  \tfoo", 4, "foo")]       // 2 spaces + tab(2) = 4 cols
+    // Ex 7 시뮬레이션: list item content에서 탭 처리
+    #[case("\t\tfoo", 5, "   foo")]    // 4+1 소비, 두번째 탭에서 3 남음
+    // 빈 문자열
+    #[case("", 0, "")]
+    #[case("", 4, "")]
+    fn test_consume_indent(#[case] input: &str, #[case] n: usize, #[case] expected: &str) {
+        assert_eq!(consume_indent(input, n), expected);
     }
 
     #[rstest]

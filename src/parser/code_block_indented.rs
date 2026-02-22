@@ -58,36 +58,82 @@ pub(crate) fn try_start(
     Err(CodeBlockIndentedNotStartReason::InsufficientIndent)
 }
 
-/// 줄 앞에서 n칸의 indent를 제거 (탭은 4칸 탭 스톱으로 계산)
+/// 줄 앞에서 n칸의 indent를 제거하고, 나머지 content의 탭도 tab stop 기준으로 확장
 fn remove_leading_indent(line: &str, n: usize) -> String {
     let mut col = 0;
-    let mut byte_pos = 0;
+    let mut chars = line.char_indices().peekable();
 
-    for (i, c) in line.char_indices() {
+    // Phase 1: n columns만큼 indent 소비
+    while let Some(&(i, c)) = chars.peek() {
         if col >= n {
-            byte_pos = i;
-            return line[byte_pos..].to_string();
+            break;
         }
         match c {
-            ' ' => col += 1,
+            ' ' => {
+                col += 1;
+                chars.next();
+            }
             '\t' => {
                 let tab_width = 4 - (col % 4);
-                col += tab_width;
-                if col > n {
-                    // 탭이 n칸을 넘어서면 남은 공백을 spaces로 채움
-                    let remaining_spaces = col - n;
-                    return " ".repeat(remaining_spaces) + &line[i + 1..];
+                if col + tab_width > n {
+                    // 탭이 partially consumed
+                    col = n;
+                    chars.next();
+                    let remaining_spaces = (col - n) + tab_width - (n - (col - tab_width));
+                    // remaining = tab_width - (n - col_before_tab)
+                    let col_before_tab = col - tab_width;
+                    let consumed = n - col_before_tab;
+                    let remaining = tab_width - consumed;
+                    // Phase 2: 남은 content 확장 (col = n부터)
+                    let mut result = String::new();
+                    let mut content_col = n;
+                    for _ in 0..remaining {
+                        result.push(' ');
+                        content_col += 1;
+                    }
+                    for (_, cc) in chars {
+                        match cc {
+                            '\t' => {
+                                let tw = 4 - (content_col % 4);
+                                for _ in 0..tw {
+                                    result.push(' ');
+                                }
+                                content_col += tw;
+                            }
+                            _ => {
+                                result.push(cc);
+                                content_col += if cc.is_ascii() { 1 } else { 1 };
+                            }
+                        }
+                    }
+                    return result;
                 }
+                col += tab_width;
+                chars.next();
             }
-            _ => {
-                byte_pos = i;
-                return line[byte_pos..].to_string();
-            }
+            _ => break,
         }
-        byte_pos = i + c.len_utf8();
     }
 
-    String::new()
+    // Phase 2: 나머지 content — 탭을 tab stop 기준으로 확장
+    let mut result = String::new();
+    let mut content_col = col;
+    for (_, c) in chars {
+        match c {
+            '\t' => {
+                let tw = 4 - (content_col % 4);
+                for _ in 0..tw {
+                    result.push(' ');
+                }
+                content_col += tw;
+            }
+            _ => {
+                result.push(c);
+                content_col += 1;
+            }
+        }
+    }
+    result
 }
 
 #[cfg(test)]

@@ -31,31 +31,6 @@ use helpers::trim_blank_lines;
 type ParserState = (Vec<BlockNode>, ParsingContext);
 
 /// 탭을 spaces로 확장 (4칸 탭 스톱)
-fn expand_tabs(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
-    let mut col = 0;
-    for c in input.chars() {
-        match c {
-            '\t' => {
-                let spaces = 4 - (col % 4);
-                for _ in 0..spaces {
-                    result.push(' ');
-                }
-                col += spaces;
-            }
-            '\n' => {
-                result.push('\n');
-                col = 0;
-            }
-            _ => {
-                result.push(c);
-                col += 1;
-            }
-        }
-    }
-    result
-}
-
 /// 문서 전체 파싱
 pub fn parse(input: &str) -> DocumentNode {
     if input.is_empty() {
@@ -63,7 +38,7 @@ pub fn parse(input: &str) -> DocumentNode {
     }
 
     // Pass 0: 탭을 spaces로 확장
-    let input = expand_tabs(input);
+    let input = input.to_owned();
 
     // fold: 각 줄을 처리하며 상태 전이
     let (children, final_context) = input.lines().fold(
@@ -231,13 +206,81 @@ fn process_line_in_blockquote(current_line: &str, pending_lines: Vec<String>) ->
         return (vec![bq_node, node], ParsingContext::None(NoneContext));
     }
 
-    // > 로 시작하면 마커 제거 후 저장, 아니면 lazy continuation
-    let content = match blockquote::parse(current_line) {
-        Ok(stripped) => stripped,
-        Err(_) => trimmed.to_string(),
-    };
-    let pending_lines = push_string(pending_lines, content);
+    // > 로 시작하면 마커 제거 후 저장
+    if let Ok(stripped) = blockquote::parse(current_line) {
+        let pending_lines = push_string(pending_lines, stripped);
+        return (vec![], ParsingContext::Blockquote { pending_lines });
+    }
+
+    // > 없는 줄: paragraph가 열려있고, 현재 줄이 block 시작이 아니면 lazy continuation
+    // 그 외에는 blockquote 종료
+    if !is_paragraph_open(&pending_lines) || is_block_structure(current_line) {
+        let bq_node = blockquote::finalize(pending_lines, parse_block_simple);
+        let (more_nodes, new_context) = NoneContext.parse(current_line);
+        let mut nodes = vec![bq_node];
+        nodes.extend(more_nodes);
+        return (nodes, new_context);
+    }
+
+    // Lazy continuation: paragraph 열림, > 없는 줄을 마지막 줄에 이어붙이기
+    // (재파싱 시 같은 paragraph로 유지되도록)
+    let mut pending_lines = pending_lines;
+    if let Some(last) = pending_lines.last_mut() {
+        last.push('\n');
+        last.push_str(trimmed);
+    } else {
+        pending_lines.push(trimmed.to_string());
+    }
     (vec![], ParsingContext::Blockquote { pending_lines })
+}
+
+/// blockquote의 pending_lines에서 마지막이 paragraph인지 판단
+fn is_paragraph_open(pending_lines: &[String]) -> bool {
+    let last = match pending_lines.last() {
+        Some(line) => line.as_str(),
+        None => return false,
+    };
+    if last.trim().is_empty() {
+        return false;
+    }
+    if thematic_break::parse(last).is_ok() {
+        return false;
+    }
+    if heading::parse(last).is_ok() {
+        return false;
+    }
+    if let Ok(CodeBlockFencedOk::Start(_)) = parse_code_block_fenced(last, None) {
+        return false;
+    }
+    if code_block_indented::try_start(last).is_ok() {
+        return false;
+    }
+    true
+}
+
+/// 줄이 paragraph를 interrupt 할 수 있는 block 구조인지 판단
+fn is_block_structure(line: &str) -> bool {
+    if thematic_break::parse(line).is_ok() {
+        return true;
+    }
+    if heading::parse(line).is_ok() {
+        return true;
+    }
+    if let Ok(CodeBlockFencedOk::Start(_)) = parse_code_block_fenced(line, None) {
+        return true;
+    }
+    if let Ok(list_item::ListItemOk::Started(_)) = list_item::parse(line) {
+        return true;
+    }
+    if blockquote::parse(line).is_ok() {
+        return true;
+    }
+    if let Ok(html_block::HtmlBlockOk::Start(bt)) = html_block::parse(line, None) {
+        if html_block::can_interrupt_paragraph(bt) {
+            return true;
+        }
+    }
+    false
 }
 
 /// 마지막 컨텍스트 마무리
@@ -1743,10 +1786,7 @@ mod tests {
         assert!(matches!(&doc.children[0], BlockNode::CodeBlock(_)));
     }
 
-    // Example 290: lazy continuation in list item
-    // TODO: lazy continuation not supported — paragraph text without indent not folded into list item
     #[test]
-    #[ignore]
     fn example_290() {
         let doc = parse("  1.  A paragraph\nwith two lines.\n\n          indented code\n\n      > A block quote.\n");
         assert_eq!(doc.children.len(), 1);
@@ -1763,9 +1803,7 @@ mod tests {
     }
 
     // Example 291: partial indent continuation → tight list with one item
-    // TODO: lazy continuation not supported — partially indented continuation line not recognized
     #[test]
-    #[ignore]
     fn example_291() {
         let doc = parse("  1.  A paragraph\n    with two lines.\n");
         assert_eq!(doc.children.len(), 1);
@@ -2216,7 +2254,6 @@ mod tests {
 
     // Example 7: tab in list item → code block
     #[test]
-    #[ignore] // TODO: list item content indent calculation for code block detection
     fn example_7() {
         let doc = parse("-\t\tfoo\n");
         assert_eq!(doc.children.len(), 1);
@@ -2493,4 +2530,6 @@ mod tests {
         }
         result
     }
+
+
 }
