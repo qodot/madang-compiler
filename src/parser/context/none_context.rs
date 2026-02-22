@@ -77,10 +77,9 @@ impl NoneContext {
         if let Ok(CodeBlockIndentedStartReason::Started(start)) =
             try_start_code_block_indented(line)
         {
-            let context = ParsingContext::CodeBlockIndented {
-                pending_lines: vec![start.content],
-                pending_blank_count: 0,
-            };
+            let context = ParsingContext::CodeBlockIndented(
+                super::CodeBlockIndentedContext::new(vec![start.content], 0),
+            );
             return (vec![], context);
         }
 

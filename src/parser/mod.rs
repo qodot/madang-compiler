@@ -73,9 +73,7 @@ fn process_line(line: &str, context: ParsingContext, nodes: Vec<BlockNode>) -> P
             process_line_in_blockquote(line, pending_lines)
         }
         ParsingContext::List(ctx) => ctx.parse(line),
-        ParsingContext::CodeBlockIndented { pending_lines, pending_blank_count } => {
-            process_line_in_code_block_indented(line, pending_lines, pending_blank_count)
-        }
+        ParsingContext::CodeBlockIndented(ctx) => ctx.parse(line),
         ParsingContext::HtmlBlock(ctx) => ctx.parse(line),
     };
 
@@ -88,50 +86,6 @@ fn process_line(line: &str, context: ParsingContext, nodes: Vec<BlockNode>) -> P
 fn extend_nodes(mut nodes: Vec<BlockNode>, new_nodes: Vec<BlockNode>) -> Vec<BlockNode> {
     nodes.extend(new_nodes);
     nodes
-}
-
-/// Indented Code Block 상태에서 줄 처리
-/// 반환: (새로 완성된 노드들, 새 컨텍스트)
-fn process_line_in_code_block_indented(
-    current_line: &str,
-    pending_lines: Vec<String>,
-    pending_blank_count: usize,
-) -> LineResult {
-    use context::CodeBlockIndentedNotStartReason;
-
-    match try_start_code_block_indented(current_line) {
-        // 4칸 이상 들여쓰기 → 코드 줄 추가
-        Ok(CodeBlockIndentedStartReason::Started(start)) => {
-            let mut pending_lines = pending_lines;
-            for _ in 0..pending_blank_count {
-                pending_lines = push_string(pending_lines, String::new());
-            }
-            let pending_lines = push_string(pending_lines, start.content);
-            let context = ParsingContext::CodeBlockIndented {
-                pending_lines,
-                pending_blank_count: 0,
-            };
-            (vec![], context)
-        }
-        // 4칸 미만 빈 줄 → 대기 (코드 블록 종료 여부는 다음 줄에서 결정)
-        Err(CodeBlockIndentedNotStartReason::Empty) => {
-            let context = ParsingContext::CodeBlockIndented {
-                pending_lines,
-                pending_blank_count: pending_blank_count + 1,
-            };
-            (vec![], context)
-        }
-        // 4칸 미만 비빈 줄 → 코드 블록 종료
-        Err(CodeBlockIndentedNotStartReason::InsufficientIndent) => {
-            let content = trim_blank_lines(pending_lines);
-            let code_node = BlockNode::CodeBlock(CodeBlockNode::new(None, content));
-            // 현재 줄을 다시 처리
-            let (more_nodes, new_context) = NoneContext.parse(current_line);
-            let mut nodes = vec![code_node];
-            nodes.extend(more_nodes);
-            (nodes, new_context)
-        }
-    }
 }
 
 /// Blockquote 상태에서 줄 처리
@@ -279,8 +233,8 @@ fn finalize_context(context: ParsingContext, nodes: Vec<BlockNode>) -> Vec<Block
             let list_node = ctx.build_list_node();
             push_node(nodes, list_node)
         }
-        ParsingContext::CodeBlockIndented { pending_lines, pending_blank_count: _ } => {
-            let content = trim_blank_lines(pending_lines);
+        ParsingContext::CodeBlockIndented(ctx) => {
+            let content = trim_blank_lines(ctx.pending_lines);
             let node = BlockNode::CodeBlock(CodeBlockNode::new(None, content));
             push_node(nodes, node)
         }
