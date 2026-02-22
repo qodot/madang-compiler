@@ -4,12 +4,9 @@ use super::{ItemLine, LineResult, ListItemStart, NoneContext, ParsingContext};
 use crate::node::{
     BlockNode, ListItemNode, ListNode, ParagraphNode,
 };
-use crate::parser::helpers::{calculate_indent, consume_indent, count_leading_char};
+use crate::parser::helpers::{calculate_indent, consume_indent};
 use crate::parser::list_item;
 use crate::parser::thematic_break;
-use crate::parser::heading;
-use crate::parser::blockquote;
-use crate::parser::code_block_fenced;
 
 pub struct ListContext {
     /// 첫 아이템의 시작 정보 (리스트 타입 결정용)
@@ -99,7 +96,7 @@ impl ListContext {
 
         // 3. Lazy continuation: 빈 줄 전이고 block-level 구조 시작이 아니면
         //    현재 아이템의 paragraph continuation으로 처리 (CommonMark §5.3)
-        if self.pending_blank_count == 0 && !is_block_start(line) {
+        if self.pending_blank_count == 0 && !is_block_start_for_lazy(line) {
             let content = line.to_string();
             return self.continue_with(ItemLine::text(content));
         }
@@ -326,24 +323,12 @@ fn parse_item_lines_with_text_only(lines: &[ItemLine]) -> Vec<BlockNode> {
 }
 
 /// 줄이 block-level 구조의 시작인지 확인 (lazy continuation 판단용)
-/// thematic break, ATX heading, fenced code, blockquote, HTML block 시작이면 true
-fn is_block_start(line: &str) -> bool {
-    // thematic break
-    if thematic_break::parse(line).is_ok() {
-        return true;
+/// indented code block은 paragraph를 interrupt할 수 없으므로 제외
+fn is_block_start_for_lazy(line: &str) -> bool {
+    use crate::parser::block_start::{self, BlockStart};
+    match block_start::detect(line, false) {
+        Some(BlockStart::IndentedCode(_)) => false,
+        Some(_) => true,
+        None => false,
     }
-    // ATX heading
-    if heading::parse(line).is_ok() {
-        return true;
-    }
-    // fenced code block
-    if code_block_fenced::parse(line, None).is_ok() {
-        return true;
-    }
-    // blockquote
-    if blockquote::parse(line).is_ok() {
-        return true;
-    }
-    // HTML block — 체크 생략 (복잡하고 드문 케이스)
-    false
 }

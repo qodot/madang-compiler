@@ -1,4 +1,3 @@
-use crate::node::BlockNode;
 use crate::parser::html_block::{self, HtmlBlockOk, HtmlBlockType};
 
 use super::{LineResult, NoneContext, ParsingContext};

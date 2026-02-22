@@ -3,6 +3,7 @@
 //! 라인 단위로 스캔하며 블록 레벨 요소를 파싱합니다.
 //! fold 패턴을 사용하여 불변 상태 전이를 구현합니다.
 
+pub(crate) mod block_start;
 mod blockquote;
 mod code_block_fenced;
 mod code_block_indented;
@@ -19,10 +20,8 @@ mod paragraph;
 mod thematic_break;
 
 use crate::node::{BlockNode, CodeBlockNode, DocumentNode, HeadingNode, ParagraphNode};
-use code_block_fenced::{parse as parse_code_block_fenced, CodeBlockFencedOk};
-use code_block_indented::try_start as try_start_code_block_indented;
 use context::{
-    CodeBlockFencedStart, CodeBlockIndentedStartReason, HtmlBlockContext, LineResult, NoneContext,
+    NoneContext,
     ParsingContext,
 };
 use helpers::trim_blank_lines;
