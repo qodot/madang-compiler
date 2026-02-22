@@ -15,6 +15,22 @@ mod raw_html;
 use crate::node::{AutolinkNode, CodeSpanNode, ImageNode, InlineNode, LinkNode, RawHtmlNode, TextNode};
 use emphasis::{DelimiterChar, DelimiterRun};
 
+// =============================================================================
+// InlineParser
+// =============================================================================
+
+/// 인라인 파서 — mutable state를 struct로 캡슐화
+struct InlineParser<'a> {
+    raw: &'a str,
+    bytes: &'a [u8],
+    pos: usize,
+    result: Vec<InlineNode>,
+    delimiters: Vec<DelimiterRun>,
+    brackets: Vec<BracketEntry>,
+    force_new_text: bool,
+    ref_map: Option<&'a crate::parser::link_ref_def::RefMap>,
+}
+
 /// Bracket stack entry for link/image parsing
 struct BracketEntry {
     /// `[` 텍스트 노드의 result 내 인덱스
@@ -26,327 +42,349 @@ struct BracketEntry {
 }
 
 /// raw 텍스트를 인라인 노드들로 파싱
-///
-/// 블록 파서가 추출한 텍스트를 받아서 인라인 구조를 파싱합니다.
 pub fn parse_inlines(raw: &str) -> Vec<InlineNode> {
     parse_inlines_with_refs(raw, None)
 }
 
 pub fn parse_inlines_with_refs(raw: &str, ref_map: Option<&crate::parser::link_ref_def::RefMap>) -> Vec<InlineNode> {
-    let mut result = Vec::new();
-    let mut delimiters: Vec<DelimiterRun> = Vec::new();
-    let mut brackets: Vec<BracketEntry> = Vec::new();
-    let mut pos = 0;
-    let mut force_new_text = false;
-    let bytes = raw.as_bytes();
+    InlineParser::new(raw, ref_map).parse()
+}
 
-    while pos < raw.len() {
-        match bytes[pos] {
-            b'\\' => {
-                // \ + \n → hard line break
-                if pos + 1 < raw.len() && bytes[pos + 1] == b'\n' {
-                    strip_trailing_spaces_from_last_text(&mut result);
-                    result.push(InlineNode::HardBreak);
-                    pos += 2; // skip \ and \n
-                    // 다음 줄의 leading spaces 건너뛰기
-                    pos += line_break::skip_leading_spaces(&raw[pos..]);
-                } else {
-                    match backslash_escape::try_escape(&raw[pos..]) {
-                        Some((escaped_char, consumed)) => {
-                            if force_new_text {
-                                result.push(InlineNode::Text(TextNode(escaped_char.to_string())));
-                                force_new_text = false;
-                            } else {
-                                push_text_char(&mut result, escaped_char);
-                            }
-                            pos += consumed;
-                        }
-                        None => {
-                            push_text_char(&mut result, '\\');
-                            pos += 1;
-                        }
-                    }
+impl<'a> InlineParser<'a> {
+    fn new(raw: &'a str, ref_map: Option<&'a crate::parser::link_ref_def::RefMap>) -> Self {
+        Self {
+            raw,
+            bytes: raw.as_bytes(),
+            pos: 0,
+            result: Vec::new(),
+            delimiters: Vec::new(),
+            brackets: Vec::new(),
+            force_new_text: false,
+            ref_map,
+        }
+    }
+
+    fn parse(mut self) -> Vec<InlineNode> {
+        while self.pos < self.raw.len() {
+            match self.bytes[self.pos] {
+                b'\\' => self.handle_backslash(),
+                b'`' => self.handle_backtick(),
+                b'<' => self.handle_angle_bracket(),
+                b'\n' => self.handle_newline(),
+                b'*' | b'_' => self.handle_delimiter(),
+                b'!' if self.pos + 1 < self.raw.len() && self.bytes[self.pos + 1] == b'[' => {
+                    self.handle_image_bracket()
                 }
+                b'[' => self.handle_open_bracket(),
+                b']' => self.handle_close_bracket(),
+                b'&' => self.handle_ampersand(),
+                _ => self.handle_default(),
             }
-            b'`' => {
-                match code_span::parse_code_span(&raw[pos..]) {
-                    Some(cs) => {
-                        result.push(InlineNode::CodeSpan(CodeSpanNode::new(&cs.content)));
-                        pos += cs.bytes_consumed;
-                    }
-                    None => {
-                        let backtick_len = raw[pos..].chars().take_while(|&c| c == '`').count();
-                        for _ in 0..backtick_len {
-                            push_text_char(&mut result, '`');
-                        }
-                        pos += backtick_len;
-                    }
+        }
+
+        if self.result.is_empty() {
+            return vec![InlineNode::Text(TextNode::new(""))];
+        }
+
+        // emphasis/strong 처리
+        if !self.delimiters.is_empty() {
+            self.result = emphasis::process_emphasis(self.result, self.delimiters);
+        }
+
+        // 인접한 Text 노드 합치기
+        merge_adjacent_text(&mut self.result);
+
+        self.result
+    }
+
+    // -------------------------------------------------------------------------
+    // 문자별 핸들러
+    // -------------------------------------------------------------------------
+
+    fn handle_backslash(&mut self) {
+        if self.pos + 1 < self.raw.len() && self.bytes[self.pos + 1] == b'\n' {
+            self.strip_trailing_spaces();
+            self.result.push(InlineNode::HardBreak);
+            self.pos += 2;
+            self.pos += line_break::skip_leading_spaces(&self.raw[self.pos..]);
+        } else {
+            match backslash_escape::try_escape(&self.raw[self.pos..]) {
+                Some((escaped_char, consumed)) => {
+                    self.push_char(escaped_char);
+                    self.pos += consumed;
                 }
-            }
-            b'<' => {
-                match autolink::parse_autolink(&raw[pos..]) {
-                    Some(autolink::AutolinkResult::Uri { uri, bytes_consumed }) => {
-                        result.push(InlineNode::Autolink(AutolinkNode::uri(&uri)));
-                        pos += bytes_consumed;
-                    }
-                    Some(autolink::AutolinkResult::Email { email, bytes_consumed }) => {
-                        result.push(InlineNode::Autolink(AutolinkNode::email(&email)));
-                        pos += bytes_consumed;
-                    }
-                    None => {
-                        match raw_html::parse_raw_html(&raw[pos..]) {
-                            Some(rh) => {
-                                result.push(InlineNode::RawHtml(RawHtmlNode::new(&rh.content)));
-                                pos += rh.bytes_consumed;
-                            }
-                            None => {
-                                push_text_char(&mut result, '<');
-                                pos += 1;
-                            }
-                        }
-                    }
+                None => {
+                    self.push_char_to_last('\\');
+                    self.pos += 1;
                 }
-            }
-            b'\n' => {
-                // trailing spaces 2개 이상 → hard break, 그 외 → soft break
-                let trailing = last_text_trailing_spaces(&result);
-                if trailing >= 2 {
-                    strip_trailing_spaces_from_last_text(&mut result);
-                    result.push(InlineNode::HardBreak);
-                } else {
-                    strip_trailing_spaces_from_last_text(&mut result);
-                    result.push(InlineNode::SoftBreak);
-                }
-                pos += 1;
-                // 다음 줄의 leading spaces 건너뛰기
-                pos += line_break::skip_leading_spaces(&raw[pos..]);
-            }
-            b'*' | b'_' => {
-                let delim_char = if bytes[pos] == b'*' {
-                    DelimiterChar::Asterisk
-                } else {
-                    DelimiterChar::Underscore
-                };
-
-                let run_len = raw[pos..].chars().take_while(|&c| c == bytes[pos] as char).count();
-
-                let before = if pos > 0 { raw[..pos].chars().last() } else { None };
-                let after = raw[pos + run_len..].chars().next();
-
-                let (can_open, can_close) = emphasis::compute_flanking(delim_char, before, after);
-
-                // delimiter 텍스트를 별도 노드로 추가
-                let delim_text: String = std::iter::repeat(bytes[pos] as char).take(run_len).collect();
-                result.push(InlineNode::Text(TextNode(delim_text)));
-
-                delimiters.push(DelimiterRun {
-                    char: delim_char,
-                    original_length: run_len,
-                    length: run_len,
-                    can_open,
-                    can_close,
-                    position: result.len() - 1,
-                });
-
-                pos += run_len;
-                // delimiter 뒤의 텍스트가 합쳐지지 않도록 force_new_text 설정
-                force_new_text = true;
-            }
-            b'!' if pos + 1 < raw.len() && bytes[pos + 1] == b'[' => {
-                // image bracket `![`
-                result.push(InlineNode::Text(TextNode("![".to_string())));
-                brackets.push(BracketEntry {
-                    node_index: result.len() - 1,
-                    active: true,
-                    image: true,
-                });
-                pos += 2;
-                force_new_text = true;
-            }
-            b'[' => {
-                // link bracket `[`
-                result.push(InlineNode::Text(TextNode("[".to_string())));
-                brackets.push(BracketEntry {
-                    node_index: result.len() - 1,
-                    active: true,
-                    image: false,
-                });
-                pos += 1;
-                force_new_text = true;
-            }
-            b']' => {
-                if let Some(bracket) = brackets.pop() {
-                    if bracket.active && pos + 1 < raw.len() && bytes[pos + 1] == b'(' {
-                        // `](` → 인라인 링크 시도
-                        if let Some(dest) = link::parse_link_destination(&raw[pos + 1..]) {
-                            let bracket_pos = bracket.node_index;
-
-                            // delimiter를 bracket 기준으로 분할
-                            let split_idx = delimiters
-                                .iter()
-                                .position(|d| d.position > bracket_pos)
-                                .unwrap_or(delimiters.len());
-                            let child_delims: Vec<DelimiterRun> = delimiters
-                                .split_off(split_idx)
-                                .into_iter()
-                                .map(|mut d| {
-                                    d.position -= bracket_pos + 1;
-                                    d
-                                })
-                                .collect();
-
-                            // children 추출
-                            let children: Vec<InlineNode> = result
-                                .drain((bracket_pos + 1)..)
-                                .collect();
-                            result.pop(); // remove the `[` text node
-
-                            // children에 emphasis 처리 적용
-                            let children = if !child_delims.is_empty() {
-                                emphasis::process_emphasis(children, child_delims)
-                            } else {
-                                children
-                            };
-
-                            let node = if bracket.image {
-                                InlineNode::Image(ImageNode::new(
-                                    children,
-                                    &dest.destination,
-                                    dest.title.as_deref(),
-                                ))
-                            } else {
-                                InlineNode::Link(LinkNode::new(
-                                    children,
-                                    &dest.destination,
-                                    dest.title.as_deref(),
-                                ))
-                            };
-                            result.push(node);
-
-                            pos += 1 + dest.bytes_consumed; // skip ] + destination
-                            force_new_text = true;
-
-                            // link의 경우 외부 link bracket만 비활성화 (링크 안에 링크는 불가)
-                            // 외부 image bracket은 활성 상태 유지 (image 안에 link는 가능)
-                            if !bracket.image {
-                                for b in brackets.iter_mut() {
-                                    if !b.image {
-                                        b.active = false;
-                                    }
-                                }
-                            }
-                            continue;
-                        }
-                    }
-                    // inline link 실패 → reference link 시도
-                    if bracket.active {
-                        if let Some(rm) = ref_map {
-                            if let Some((ref_node, consumed)) = try_reference_link(
-                                &raw[pos..], &result, &delimiters, &bracket, rm,
-                            ) {
-                                let bracket_pos = bracket.node_index;
-                                // delimiter 분할
-                                let split_idx = delimiters
-                                    .iter()
-                                    .position(|d| d.position > bracket_pos)
-                                    .unwrap_or(delimiters.len());
-                                let child_delims: Vec<DelimiterRun> = delimiters
-                                    .split_off(split_idx)
-                                    .into_iter()
-                                    .map(|mut d| {
-                                        d.position -= bracket_pos + 1;
-                                        d
-                                    })
-                                    .collect();
-
-                                let children: Vec<InlineNode> = result
-                                    .drain((bracket_pos + 1)..)
-                                    .collect();
-                                result.pop();
-
-                                let children = if !child_delims.is_empty() {
-                                    emphasis::process_emphasis(children, child_delims)
-                                } else {
-                                    children
-                                };
-
-                                result.push(ref_node.with_children(children));
-                                pos += consumed;
-                                force_new_text = true;
-
-                                if !bracket.image {
-                                    for b in brackets.iter_mut() {
-                                        if !b.image {
-                                            b.active = false;
-                                        }
-                                    }
-                                }
-                                continue;
-                            }
-                        }
-                    }
-                    // 매칭 실패 → `]`를 텍스트로
-                    push_text_char(&mut result, ']');
-                    pos += 1;
-                } else {
-                    // bracket 없음 → `]`를 텍스트로
-                    push_text_char(&mut result, ']');
-                    pos += 1;
-                }
-            }
-            b'&' => {
-                match entity::try_parse_entity(&raw[pos..]) {
-                    Some((resolved, consumed)) => {
-                        if force_new_text {
-                            result.push(InlineNode::Text(TextNode(resolved)));
-                            force_new_text = false;
-                        } else {
-                            for ch in resolved.chars() {
-                                push_text_char(&mut result, ch);
-                            }
-                        }
-                        pos += consumed;
-                    }
-                    None => {
-                        if force_new_text {
-                            result.push(InlineNode::Text(TextNode("&".to_string())));
-                            force_new_text = false;
-                        } else {
-                            push_text_char(&mut result, '&');
-                        }
-                        pos += 1;
-                    }
-                }
-            }
-            _ => {
-                let c = raw[pos..].chars().next().unwrap();
-                if force_new_text {
-                    result.push(InlineNode::Text(TextNode(c.to_string())));
-                    force_new_text = false;
-                } else {
-                    push_text_char(&mut result, c);
-                }
-                pos += c.len_utf8();
             }
         }
     }
 
-    if result.is_empty() {
-        return vec![InlineNode::Text(TextNode::new(""))];
+    fn handle_backtick(&mut self) {
+        match code_span::parse_code_span(&self.raw[self.pos..]) {
+            Some(cs) => {
+                self.result.push(InlineNode::CodeSpan(CodeSpanNode::new(&cs.content)));
+                self.pos += cs.bytes_consumed;
+            }
+            None => {
+                let backtick_len = self.raw[self.pos..].chars().take_while(|&c| c == '`').count();
+                for _ in 0..backtick_len {
+                    self.push_char_to_last('`');
+                }
+                self.pos += backtick_len;
+            }
+        }
     }
 
-    // emphasis/strong 처리
-    if !delimiters.is_empty() {
-        result = emphasis::process_emphasis(result, delimiters);
+    fn handle_angle_bracket(&mut self) {
+        match autolink::parse_autolink(&self.raw[self.pos..]) {
+            Some(autolink::AutolinkResult::Uri { uri, bytes_consumed }) => {
+                self.result.push(InlineNode::Autolink(AutolinkNode::uri(&uri)));
+                self.pos += bytes_consumed;
+            }
+            Some(autolink::AutolinkResult::Email { email, bytes_consumed }) => {
+                self.result.push(InlineNode::Autolink(AutolinkNode::email(&email)));
+                self.pos += bytes_consumed;
+            }
+            None => {
+                match raw_html::parse_raw_html(&self.raw[self.pos..]) {
+                    Some(rh) => {
+                        self.result.push(InlineNode::RawHtml(RawHtmlNode::new(&rh.content)));
+                        self.pos += rh.bytes_consumed;
+                    }
+                    None => {
+                        self.push_char_to_last('<');
+                        self.pos += 1;
+                    }
+                }
+            }
+        }
     }
 
-    // 인접한 Text 노드 합치기
-    merge_adjacent_text(&mut result);
+    fn handle_newline(&mut self) {
+        let trailing = self.last_trailing_spaces();
+        self.strip_trailing_spaces();
+        if trailing >= 2 {
+            self.result.push(InlineNode::HardBreak);
+        } else {
+            self.result.push(InlineNode::SoftBreak);
+        }
+        self.pos += 1;
+        self.pos += line_break::skip_leading_spaces(&self.raw[self.pos..]);
+    }
 
-    result
+    fn handle_delimiter(&mut self) {
+        let byte = self.bytes[self.pos];
+        let delim_char = if byte == b'*' {
+            DelimiterChar::Asterisk
+        } else {
+            DelimiterChar::Underscore
+        };
+
+        let run_len = self.raw[self.pos..].chars().take_while(|&c| c == byte as char).count();
+        let before = if self.pos > 0 { self.raw[..self.pos].chars().last() } else { None };
+        let after = self.raw[self.pos + run_len..].chars().next();
+        let (can_open, can_close) = emphasis::compute_flanking(delim_char, before, after);
+
+        let delim_text: String = std::iter::repeat(byte as char).take(run_len).collect();
+        self.result.push(InlineNode::Text(TextNode(delim_text)));
+
+        self.delimiters.push(DelimiterRun {
+            char: delim_char,
+            original_length: run_len,
+            length: run_len,
+            can_open,
+            can_close,
+            position: self.result.len() - 1,
+        });
+
+        self.pos += run_len;
+        self.force_new_text = true;
+    }
+
+    fn handle_image_bracket(&mut self) {
+        self.result.push(InlineNode::Text(TextNode("![".to_string())));
+        self.brackets.push(BracketEntry {
+            node_index: self.result.len() - 1,
+            active: true,
+            image: true,
+        });
+        self.pos += 2;
+        self.force_new_text = true;
+    }
+
+    fn handle_open_bracket(&mut self) {
+        self.result.push(InlineNode::Text(TextNode("[".to_string())));
+        self.brackets.push(BracketEntry {
+            node_index: self.result.len() - 1,
+            active: true,
+            image: false,
+        });
+        self.pos += 1;
+        self.force_new_text = true;
+    }
+
+    fn handle_close_bracket(&mut self) {
+        let bracket = match self.brackets.pop() {
+            Some(b) => b,
+            None => {
+                self.push_char_to_last(']');
+                self.pos += 1;
+                return;
+            }
+        };
+
+        // `](` → 인라인 링크 시도
+        if bracket.active && self.pos + 1 < self.raw.len() && self.bytes[self.pos + 1] == b'(' {
+            if let Some(dest) = link::parse_link_destination(&self.raw[self.pos + 1..]) {
+                let node = self.build_link_or_image(&bracket, &dest.destination, dest.title.as_deref());
+                self.result.push(node);
+                self.pos += 1 + dest.bytes_consumed;
+                self.force_new_text = true;
+                self.deactivate_outer_brackets(bracket.image);
+                return;
+            }
+        }
+
+        // inline link 실패 → reference link 시도
+        if bracket.active {
+            if let Some(rm) = self.ref_map {
+                if let Some((ref_result, consumed)) = try_reference_link(
+                    &self.raw[self.pos..], &self.result, &bracket, rm,
+                ) {
+                    let children = self.extract_children(bracket.node_index);
+                    self.result.push(ref_result.with_children(children));
+                    self.pos += consumed;
+                    self.force_new_text = true;
+                    self.deactivate_outer_brackets(bracket.image);
+                    return;
+                }
+            }
+        }
+
+        // 매칭 실패 → `]`를 텍스트로
+        self.push_char_to_last(']');
+        self.pos += 1;
+    }
+
+    fn handle_ampersand(&mut self) {
+        match entity::try_parse_entity(&self.raw[self.pos..]) {
+            Some((resolved, consumed)) => {
+                if self.force_new_text {
+                    self.result.push(InlineNode::Text(TextNode(resolved)));
+                    self.force_new_text = false;
+                } else {
+                    for ch in resolved.chars() {
+                        self.push_char_to_last(ch);
+                    }
+                }
+                self.pos += consumed;
+            }
+            None => {
+                self.push_char('&');
+                self.pos += 1;
+            }
+        }
+    }
+
+    fn handle_default(&mut self) {
+        let c = self.raw[self.pos..].chars().next().unwrap();
+        self.push_char(c);
+        self.pos += c.len_utf8();
+    }
+
+    // -------------------------------------------------------------------------
+    // 헬퍼 메서드
+    // -------------------------------------------------------------------------
+
+    /// 문자를 추가 (force_new_text 고려)
+    fn push_char(&mut self, c: char) {
+        if self.force_new_text {
+            self.result.push(InlineNode::Text(TextNode(c.to_string())));
+            self.force_new_text = false;
+        } else {
+            self.push_char_to_last(c);
+        }
+    }
+
+    /// 마지막 Text 노드에 문자 추가 (없으면 새로 생성)
+    fn push_char_to_last(&mut self, c: char) {
+        if let Some(InlineNode::Text(text)) = self.result.last_mut() {
+            text.0.push(c);
+        } else {
+            self.result.push(InlineNode::Text(TextNode(c.to_string())));
+        }
+    }
+
+    /// 마지막 Text 노드의 trailing spaces 수
+    fn last_trailing_spaces(&self) -> usize {
+        if let Some(InlineNode::Text(text)) = self.result.last() {
+            line_break::count_trailing_spaces(&text.0)
+        } else {
+            0
+        }
+    }
+
+    /// 마지막 Text 노드에서 trailing spaces 제거
+    fn strip_trailing_spaces(&mut self) {
+        if let Some(InlineNode::Text(text)) = self.result.last_mut() {
+            text.0 = line_break::strip_trailing_spaces(&text.0).to_string();
+        }
+    }
+
+    /// bracket 위치부터 children 추출 + emphasis 처리
+    fn extract_children(&mut self, bracket_pos: usize) -> Vec<InlineNode> {
+        // delimiter를 bracket 기준으로 분할
+        let split_idx = self.delimiters
+            .iter()
+            .position(|d| d.position > bracket_pos)
+            .unwrap_or(self.delimiters.len());
+        let child_delims: Vec<DelimiterRun> = self.delimiters
+            .split_off(split_idx)
+            .into_iter()
+            .map(|mut d| {
+                d.position -= bracket_pos + 1;
+                d
+            })
+            .collect();
+
+        let children: Vec<InlineNode> = self.result.drain((bracket_pos + 1)..).collect();
+        self.result.pop(); // remove the `[` or `![` text node
+
+        if !child_delims.is_empty() {
+            emphasis::process_emphasis(children, child_delims)
+        } else {
+            children
+        }
+    }
+
+    /// 인라인 링크/이미지 노드 생성 (children 추출 포함)
+    fn build_link_or_image(&mut self, bracket: &BracketEntry, dest: &str, title: Option<&str>) -> InlineNode {
+        let children = self.extract_children(bracket.node_index);
+        if bracket.image {
+            InlineNode::Image(ImageNode::new(children, dest, title))
+        } else {
+            InlineNode::Link(LinkNode::new(children, dest, title))
+        }
+    }
+
+    /// 외부 bracket 비활성화 (link 안에 link 불가)
+    fn deactivate_outer_brackets(&mut self, is_image: bool) {
+        if !is_image {
+            for b in self.brackets.iter_mut() {
+                if !b.image {
+                    b.active = false;
+                }
+            }
+        }
+    }
 }
 
-/// 인접한 Text 노드를 합친다
+// =============================================================================
+// Reference link 해석
+// =============================================================================
+
 /// Reference link 해석 결과 (children은 나중에 설정)
 enum RefLinkResult {
     Link { destination: String, title: Option<String> },
@@ -367,19 +405,14 @@ impl RefLinkResult {
 }
 
 /// reference link를 시도한다.
-/// `]` 위치에서 시작, `][ref]`, `][]`, `]` (shortcut) 패턴 체크
-/// 반환: Some((RefLinkResult, consumed_bytes)) — consumed는 `]` 포함
 fn try_reference_link(
-    input: &str, // `]`부터 시작
+    input: &str,
     result: &[InlineNode],
-    _delimiters: &[DelimiterRun],
     bracket: &BracketEntry,
     ref_map: &crate::parser::link_ref_def::RefMap,
 ) -> Option<(RefLinkResult, usize)> {
     let bytes = input.as_bytes();
     let bracket_pos = bracket.node_index;
-
-    // label 텍스트 추출 (bracket 다음 ~ 현재 result 끝)
     let label_text = extract_label_from_nodes(&result[(bracket_pos + 1)..]);
 
     // 패턴 1: `][ref]` — full reference
@@ -393,7 +426,7 @@ fn try_reference_link(
                     } else {
                         RefLinkResult::Link { destination: dest.clone(), title: title.clone() }
                     };
-                    return Some((r, 1 + label_consumed)); // ] + [ref]
+                    return Some((r, 1 + label_consumed));
                 }
             }
         }
@@ -407,7 +440,7 @@ fn try_reference_link(
                 } else {
                     RefLinkResult::Link { destination: dest.clone(), title: title.clone() }
                 };
-                return Some((r, 3)); // ][]
+                return Some((r, 3));
             }
         }
     }
@@ -420,11 +453,15 @@ fn try_reference_link(
         } else {
             RefLinkResult::Link { destination: dest.clone(), title: title.clone() }
         };
-        return Some((r, 1)); // just ]
+        return Some((r, 1));
     }
 
     None
 }
+
+// =============================================================================
+// 유틸리티 함수
+// =============================================================================
 
 /// 인라인 노드 배열에서 텍스트 내용만 추출
 fn extract_label_from_nodes(nodes: &[InlineNode]) -> String {
@@ -443,7 +480,6 @@ fn extract_label_from_nodes(nodes: &[InlineNode]) -> String {
 }
 
 fn merge_adjacent_text(nodes: &mut Vec<InlineNode>) {
-    // 재귀적으로 children도 처리
     for node in nodes.iter_mut() {
         match node {
             InlineNode::Emphasis(e) => merge_adjacent_text(&mut e.children),
@@ -453,7 +489,6 @@ fn merge_adjacent_text(nodes: &mut Vec<InlineNode>) {
             _ => {}
         }
     }
-    // 인접한 Text 노드 합치기
     let mut i = 0;
     while i + 1 < nodes.len() {
         if let (InlineNode::Text(_), InlineNode::Text(_)) = (&nodes[i], &nodes[i + 1]) {
@@ -465,43 +500,6 @@ fn merge_adjacent_text(nodes: &mut Vec<InlineNode>) {
         } else {
             i += 1;
         }
-    }
-}
-
-/// 마지막 노드가 Text이면 문자열을 추가, 아니면 새 Text 노드 생성
-fn push_text_str(result: &mut Vec<InlineNode>, s: &str) {
-    if let Some(InlineNode::Text(text)) = result.last_mut() {
-        text.0.push_str(s);
-    } else {
-        result.push(InlineNode::Text(TextNode(s.to_string())));
-    }
-}
-
-/// 마지막 노드가 Text이면 문자를 추가, 아니면 새 Text 노드 생성
-fn push_text_char(result: &mut Vec<InlineNode>, c: char) {
-    if let Some(InlineNode::Text(text)) = result.last_mut() {
-        text.0.push(c);
-    } else {
-        let mut s = String::new();
-        s.push(c);
-        result.push(InlineNode::Text(TextNode(s)));
-    }
-}
-
-/// 마지막 Text 노드의 trailing spaces 수
-fn last_text_trailing_spaces(result: &[InlineNode]) -> usize {
-    if let Some(InlineNode::Text(text)) = result.last() {
-        line_break::count_trailing_spaces(&text.0)
-    } else {
-        0
-    }
-}
-
-/// 마지막 Text 노드에서 trailing spaces 제거
-fn strip_trailing_spaces_from_last_text(result: &mut Vec<InlineNode>) {
-    if let Some(InlineNode::Text(text)) = result.last_mut() {
-        let stripped = line_break::strip_trailing_spaces(&text.0).to_string();
-        text.0 = stripped;
     }
 }
 
