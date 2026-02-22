@@ -3,12 +3,14 @@
 //! 시작 정보(Start)와 파싱 상태(ParsingContext)를 분리하여 관리합니다.
 
 mod code_block_fenced_context;
+mod code_block_indented_context;
 mod html_block_context;
 mod list_context;
 mod none_context;
 mod paragraph_context;
 
 pub use code_block_fenced_context::CodeBlockFencedContext;
+pub use code_block_indented_context::CodeBlockIndentedContext;
 pub use html_block_context::HtmlBlockContext;
 pub use list_context::ListContext;
 pub use none_context::NoneContext;
@@ -49,12 +51,7 @@ pub enum ParsingContext {
     List(ListContext),
 
     /// Indented Code Block 파싱 중
-    CodeBlockIndented {
-        /// 축적된 코드 줄 (4칸 들여쓰기 제거 후)
-        pending_lines: Vec<String>,
-        /// 대기 중인 빈 줄 개수 (다음 코드 줄이 오면 내용에 추가)
-        pending_blank_count: usize,
-    },
+    CodeBlockIndented(CodeBlockIndentedContext),
 
     /// HTML Block 파싱 중
     HtmlBlock(HtmlBlockContext),
