@@ -76,58 +76,37 @@ fn process_line(line: &str, context: ParsingContext, nodes: Vec<BlockNode>) -> P
     };
 
     // 새로 완성된 노드들을 누적
-    let nodes = extend_nodes(nodes, new_nodes);
+    let mut nodes = nodes;
+    nodes.extend(new_nodes);
     (nodes, new_context)
 }
 
-/// 노드 벡터 확장 (불변 스타일)
-fn extend_nodes(mut nodes: Vec<BlockNode>, new_nodes: Vec<BlockNode>) -> Vec<BlockNode> {
-    nodes.extend(new_nodes);
-    nodes
-}
-
 /// 마지막 컨텍스트 마무리
-fn finalize_context(context: ParsingContext, nodes: Vec<BlockNode>) -> Vec<BlockNode> {
+fn finalize_context(context: ParsingContext, mut nodes: Vec<BlockNode>) -> Vec<BlockNode> {
     match context {
-        ParsingContext::None(NoneContext) => nodes,
+        ParsingContext::None(NoneContext) => {}
         ParsingContext::CodeBlockFenced(ctx) => {
-            let node = code_block_fenced::finalize(ctx.start, ctx.content);
-            push_node(nodes, node)
+            nodes.push(code_block_fenced::finalize(ctx.start, ctx.content));
         }
         ParsingContext::Paragraph(ctx) => {
             let text = ctx.pending_lines.join("\n");
-            push_node(nodes, paragraph::parse(&text))
+            nodes.push(paragraph::parse(&text));
         }
         ParsingContext::Blockquote(ctx) => {
-            let node = blockquote::finalize(ctx.pending_lines, parse_block_simple);
-            push_node(nodes, node)
+            nodes.push(blockquote::finalize(ctx.pending_lines, parse_block_simple));
         }
         ParsingContext::List(ctx) => {
-            let list_node = ctx.build_list_node();
-            push_node(nodes, list_node)
+            nodes.push(ctx.build_list_node());
         }
         ParsingContext::CodeBlockIndented(ctx) => {
             let content = trim_blank_lines(ctx.pending_lines);
-            let node = BlockNode::CodeBlock(CodeBlockNode::new(None, content));
-            push_node(nodes, node)
+            nodes.push(BlockNode::CodeBlock(CodeBlockNode::new(None, content)));
         }
         ParsingContext::HtmlBlock(ctx) => {
-            let node = html_block::finalize(ctx.pending_lines);
-            push_node(nodes, node)
+            nodes.push(html_block::finalize(ctx.pending_lines));
         }
     }
-}
-
-/// 벡터에 요소 추가 후 반환 (불변 스타일)
-fn push_node(mut vec: Vec<BlockNode>, node: BlockNode) -> Vec<BlockNode> {
-    vec.push(node);
-    vec
-}
-
-/// 문자열 벡터에 요소 추가 후 반환
-fn push_string(mut vec: Vec<String>, s: String) -> Vec<String> {
-    vec.push(s);
-    vec
+    nodes
 }
 
 /// 단일 블록 파싱 (blockquote 내부 등에서 사용)
