@@ -32,10 +32,9 @@ impl NoneContext {
 
         // Fenced Code Block 시작 감지
         if let Ok(CodeBlockFencedOk::Start(start)) = parse_code_block_fenced(line, None) {
-            let context = ParsingContext::CodeBlockFenced {
-                start,
-                content: Vec::new(),
-            };
+            let context = ParsingContext::CodeBlockFenced(
+                super::CodeBlockFencedContext::new(start, Vec::new()),
+            );
             return (vec![], context);
         }
 
