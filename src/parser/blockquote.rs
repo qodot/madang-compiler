@@ -43,11 +43,20 @@ where
     let text = contents.join("\n");
 
     // \n\n으로 분리하여 각 블록 파싱
-    let children: Vec<BlockNode> = text
-        .split("\n\n")
-        .filter(|s| !s.is_empty())
-        .map(parse_block)
-        .collect();
+    // lazy continuation으로 합쳐진 content(내부 \n 포함)는 parse_block_simple로,
+    // 그 외는 전체 파서로 파싱 (list 등 복잡한 구조 지원)
+    let has_lazy = contents.iter().any(|c| c.contains('\n'));
+    let children: Vec<BlockNode> = if has_lazy {
+        // lazy continuation이 있으면 기존 방식 (parse_block_simple)
+        text.split("\n\n")
+            .filter(|s| !s.is_empty())
+            .map(|s| parse_block(s))
+            .collect()
+    } else {
+        // lazy continuation 없으면 전체 파서로 한번에 파싱 (list continuation 등 지원)
+        let doc = crate::parser::parse(&text);
+        doc.children
+    };
 
     BlockNode::Blockquote(BlockquoteNode::new(children))
 }
@@ -190,18 +199,23 @@ mod tests {
         assert_eq!(doc.children, expected);
     }
 
-    // TODO: 현재 파서 미지원 케이스 (lazy continuation 등)
+    // Lazy continuation 한계 케이스 (통과하는 것들)
     #[rstest]
-    // Example 235: Laziness 한계 - list가 blockquote 중단
-    #[case("> - foo\n- bar", vec![BlockNode::blockquote(vec![BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])])])]), BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])])])])]
     // Example 236: Laziness 한계 - indented code block
     #[case(">     foo\n    bar", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "foo")]), BlockNode::code_block(None, "bar")])]
     // Example 237: Laziness 한계 - fenced code block
     #[case("> ```\nfoo\n```", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "")]), BlockNode::paragraph(vec![InlineNode::text("foo")]), BlockNode::code_block(None, "")])]
     // Example 249: 빈 blockquote 줄 후 paragraph
     #[case("> bar\n>\nbaz", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])]), BlockNode::paragraph(vec![InlineNode::text("baz")])])]
-    #[ignore = "lazy continuation/multi-block blockquote 미지원"]
-    fn test_blockquote_pending(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+    fn test_blockquote_laziness(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse(input);
+        assert_eq!(doc.children, expected);
+    }
+
+    // Example 235: list가 blockquote 중단
+    #[rstest]
+    #[case("> - foo\n- bar", vec![BlockNode::blockquote(vec![BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])])])]), BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])])])])]
+    fn test_blockquote_list_interrupt(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse(input);
         assert_eq!(doc.children, expected);
     }

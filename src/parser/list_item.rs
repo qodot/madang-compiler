@@ -210,8 +210,10 @@ fn try_bullet_marker(s: &str, indent: usize) -> Option<ListItemStart> {
     }
 
     // 내용 시작 위치 계산 (마커 + 공백)
+    // spaces > 4이면 content_indent = marker + 1 (나머지는 code block indent)
     let spaces_after_marker = count_leading_char(rest, ' ');
-    let content_indent = indent + 1 + spaces_after_marker.min(4); // 최대 4칸까지만
+    let effective_spaces = if spaces_after_marker >= 5 { 1 } else { spaces_after_marker };
+    let content_indent = indent + 1 + effective_spaces;
 
     Some(ListItemStart {
         marker: ListMarker::Bullet(first_char),
@@ -265,9 +267,11 @@ fn try_ordered_marker(s: &str, indent: usize) -> Option<ListItemStart> {
     }
 
     // content_indent 계산
+    // spaces > 4이면 content_indent = marker + 1 (나머지는 code block indent)
     let spaces_after_delimiter = count_leading_char(after_delimiter, ' ');
     let marker_len = num_str.len() + 1; // 숫자 + 구분자
-    let content_indent = indent + marker_len + spaces_after_delimiter.min(4);
+    let effective_spaces = if spaces_after_delimiter >= 5 { 1 } else { spaces_after_delimiter };
+    let content_indent = indent + marker_len + effective_spaces;
 
     Some(ListItemStart {
         marker: ListMarker::Ordered {
@@ -301,7 +305,7 @@ mod tests {
     #[case("-  item", ListItemStart::bullet('-', 0, 3, "item"))]
     #[case("-   item", ListItemStart::bullet('-', 0, 4, "item"))]
     #[case("-    item", ListItemStart::bullet('-', 0, 5, "item"))]
-    #[case("-     item", ListItemStart::bullet('-', 0, 5, " item"))]
+    #[case("-     item", ListItemStart::bullet('-', 0, 2, "    item"))]  // 5+ spaces → N=1, 나머지는 content
     // Bullet 빈 아이템
     #[case("-", ListItemStart::bullet('-', 0, 1, ""))]
     #[case("+", ListItemStart::bullet('+', 0, 1, ""))]
@@ -584,16 +588,18 @@ mod tests {
         BlockNode::bullet_list(true, vec![ListItemNode::new(vec![])]),
         BlockNode::paragraph(vec![InlineNode::text("foo")]),
     ])]
-    // Example 259: blockquote 내부 ordered list (복합 중첩)
-    #[case("   > > 1.  one\n>>\n>>     two", vec![
-        BlockNode::blockquote(vec![BlockNode::blockquote(vec![
-            BlockNode::ordered_list('.', 1, false, vec![
-                ListItemNode::new(vec![
-                    BlockNode::paragraph(vec![InlineNode::text("one")]),
-                    BlockNode::paragraph(vec![InlineNode::text("two")]),
-                ]),
-            ]),
-        ])]),
+    // 통과하는 케이스들
+    #[rstest]
+    // Example 279: 마커 뒤 공백만 있는 빈 줄 시작
+    #[case("-   \n  foo", vec![
+        BlockNode::bullet_list(true, vec![
+            ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])]),
+        ])
+    ])]
+    // Example 280: 빈 줄 2개 → 빈 아이템 + paragraph
+    #[case("-\n\n  foo", vec![
+        BlockNode::bullet_list(true, vec![ListItemNode::new(vec![])]),
+        BlockNode::paragraph(vec![InlineNode::text("foo")]),
     ])]
     // Example 260: blockquote 내부 bullet list
     #[case(">>- one\n>>\n  >  > two", vec![
@@ -624,9 +630,24 @@ mod tests {
             ]),
         ])
     ])]
-    
-    #[ignore = "빈 줄 시작 아이템, blockquote 내 리스트, indented code 시작 미지원"]
-    fn test_list_item_pending(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+    fn test_list_item_resolved(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
+        let doc = parse_doc(input);
+        assert_eq!(doc.children, expected);
+    }
+
+    // Example 259: nested blockquote 내 ordered list — 복잡한 중첩
+    #[rstest]
+    #[case("   > > 1.  one\n>>\n>>     two", vec![
+        BlockNode::blockquote(vec![BlockNode::blockquote(vec![
+            BlockNode::ordered_list('.', 1, false, vec![
+                ListItemNode::new(vec![
+                    BlockNode::paragraph(vec![InlineNode::text("one")]),
+                    BlockNode::paragraph(vec![InlineNode::text("two")]),
+                ]),
+            ]),
+        ])]),
+    ])]
+    fn test_list_item_nested_blockquote(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
         let doc = parse_doc(input);
         assert_eq!(doc.children, expected);
     }

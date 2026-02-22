@@ -4,9 +4,12 @@ use super::{ItemLine, LineResult, ListItemStart, NoneContext, ParsingContext};
 use crate::node::{
     BlockNode, ListItemNode, ListNode, ParagraphNode,
 };
-use crate::parser::helpers::count_leading_char;
+use crate::parser::helpers::{calculate_indent, consume_indent, count_leading_char};
 use crate::parser::list_item;
 use crate::parser::thematic_break;
+use crate::parser::heading;
+use crate::parser::blockquote;
+use crate::parser::code_block_fenced;
 
 pub struct ListContext {
     /// 첫 아이템의 시작 정보 (리스트 타입 결정용)
@@ -36,8 +39,23 @@ impl ListContext {
             return (vec![], context);
         }
 
-        let indent = count_leading_char(line, ' ');
+        let indent = calculate_indent(line);
         let first_content_indent = self.first_item_start.content_indent;
+
+        // 빈 아이템 뒤 빈 줄 + continuation (새 아이템이 아닌 줄) → list 종료
+        let current_is_empty = self.current_item_lines.iter().all(|l| l.content.trim().is_empty());
+        if current_is_empty && self.pending_blank_count > 0 {
+            // 같은 마커의 새 아이템이면 list 계속, 그 외는 종료
+            if let Ok(list_item::ListItemOk::Started(new_start)) = list_item::parse(line) {
+                if self.first_item_start.marker.is_same_type(&new_start.marker) {
+                    // 새 아이템 → list 계속 (아래 로직으로 fall through)
+                } else {
+                    return self.end_and_reprocess(line);
+                }
+            } else {
+                return self.end_and_reprocess(line);
+            }
+        }
 
         // 1. Thematic break 우선 체크 (Example 60: thematic break가 list item보다 우선)
         if indent < self.current_content_indent {
@@ -67,7 +85,7 @@ impl ListContext {
             // Example 303: 4칸 들여쓰기된 마커는 텍스트 전용
             if indent > 3 && indent >= first_content_indent {
                 let strip_amount = indent.min(self.current_content_indent);
-                let content = line[strip_amount..].to_string();
+                let content = consume_indent(line, strip_amount);
                 return self.continue_with(ItemLine::text_only(content));
             }
         }
@@ -75,11 +93,18 @@ impl ListContext {
         // 2. Continuation line (Example 303: first_content_indent 기준)
         if indent >= first_content_indent {
             let strip_amount = indent.min(self.current_content_indent);
-            let content = line[strip_amount..].to_string();
+            let content = consume_indent(line, strip_amount);
             return self.continue_with(ItemLine::text(content));
         }
 
-        // 3. first_content_indent 미만 + 새 아이템 아님 → 종료
+        // 3. Lazy continuation: 빈 줄 전이고 block-level 구조 시작이 아니면
+        //    현재 아이템의 paragraph continuation으로 처리 (CommonMark §5.3)
+        if self.pending_blank_count == 0 && !is_block_start(line) {
+            let content = line.to_string();
+            return self.continue_with(ItemLine::text(content));
+        }
+
+        // 4. first_content_indent 미만 + 새 아이템 아님 → 종료
         self.end_and_reprocess(line)
     }
 
@@ -298,4 +323,27 @@ fn parse_item_lines_with_text_only(lines: &[ItemLine]) -> Vec<BlockNode> {
     }
 
     result
+}
+
+/// 줄이 block-level 구조의 시작인지 확인 (lazy continuation 판단용)
+/// thematic break, ATX heading, fenced code, blockquote, HTML block 시작이면 true
+fn is_block_start(line: &str) -> bool {
+    // thematic break
+    if thematic_break::parse(line).is_ok() {
+        return true;
+    }
+    // ATX heading
+    if heading::parse(line).is_ok() {
+        return true;
+    }
+    // fenced code block
+    if code_block_fenced::parse(line, None).is_ok() {
+        return true;
+    }
+    // blockquote
+    if blockquote::parse(line).is_ok() {
+        return true;
+    }
+    // HTML block — 체크 생략 (복잡하고 드문 케이스)
+    false
 }
