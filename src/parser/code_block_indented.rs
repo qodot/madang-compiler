@@ -2,7 +2,7 @@
 //!
 //! 4칸 들여쓰기로 작성된 코드 블록을 파싱합니다.
 
-use super::helpers::{calculate_indent, count_leading_char};
+use super::helpers::calculate_indent;
 
 // =============================================================================
 // 타입 정의

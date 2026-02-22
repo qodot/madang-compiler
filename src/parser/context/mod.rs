@@ -21,11 +21,7 @@ pub use paragraph_context::ParagraphContext;
 use crate::node::BlockNode;
 
 // 각 파서 모듈에서 타입 re-export
-pub use super::code_block_fenced::CodeBlockFencedStart;
-pub use super::code_block_indented::{
-    CodeBlockIndentedNotStartReason, CodeBlockIndentedStartReason,
-};
-pub use super::heading_setext::HeadingSetextStartReason;
+pub use super::code_block_indented::CodeBlockIndentedStartReason;
 pub use super::list_item::{ItemLine, ListItemStart};
 
 /// 한 줄 처리 결과: (새로 완성된 노드들, 새 컨텍스트)

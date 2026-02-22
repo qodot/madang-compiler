@@ -1,14 +1,12 @@
 //! ParagraphContext: Paragraph 파싱 중 상태
 
 use super::{
-    HeadingSetextStartReason, ItemLine, LineResult, ListContext, ParsingContext,
+    ItemLine, LineResult, ListContext, ParsingContext,
 };
 use crate::node::HeadingNode;
-use crate::parser::code_block_fenced::{parse as parse_code_block_fenced, CodeBlockFencedOk};
+use crate::parser::block_start::{self, BlockStart};
 use crate::parser::html_block;
-use crate::parser::{blockquote, heading, inline, list_item, paragraph, thematic_break};
-use crate::parser::heading_setext::try_start as try_start_heading_setext;
-use crate::parser::helpers::calculate_indent;
+use crate::parser::{inline, paragraph};
 use super::NoneContext;
 
 #[derive(Debug, Clone)]
@@ -30,107 +28,88 @@ impl ParagraphContext {
             return (vec![paragraph::parse(&text)], ParsingContext::None(NoneContext));
         }
 
-        // Fenced Code Block 시작이면 Paragraph 종료 후 Code Block 시작
-        if let Ok(CodeBlockFencedOk::Start(start)) = parse_code_block_fenced(line, None) {
-            let text = self.pending_lines.join("\n");
-            let context = ParsingContext::CodeBlockFenced(
-                super::CodeBlockFencedContext::new(start, Vec::new()),
-            );
-            return (vec![paragraph::parse(&text)], context);
-        }
-
-        let indent = calculate_indent(line);
-
-        // Setext Heading 밑줄이면 Paragraph를 Heading으로 변환
-        // 중요: Thematic Break보다 먼저 확인해야 함 (---가 Setext 밑줄로 해석됨)
-        if let Ok(HeadingSetextStartReason::Started(start)) = try_start_heading_setext(trimmed, indent) {
-            let text = self.pending_lines.join("\n");
-            let text_trimmed = text.trim_end();
-            let node = crate::node::BlockNode::Heading(HeadingNode::with_raw_text(
-                start.level.to_level(),
-                inline::parse_inlines(text_trimmed),
-                &text,
-            ));
-            return (vec![node], ParsingContext::None(NoneContext));
-        }
-
-        // Thematic Break이면 Paragraph 종료
-        if let Ok(node) = thematic_break::parse(line) {
-            let text = self.pending_lines.join("\n");
-            return (vec![paragraph::parse(&text), node], ParsingContext::None(NoneContext));
-        }
-
-        // ATX Heading이면 Paragraph 종료
-        if let Ok(node) = heading::parse(line) {
-            let text = self.pending_lines.join("\n");
-            return (vec![paragraph::parse(&text), node], ParsingContext::None(NoneContext));
-        }
-
-        // HTML Block 시작이면 (type 1-6만) Paragraph 종료 후 HTML Block 시작
-        if let Ok(html_block::HtmlBlockOk::Start(block_type)) = html_block::parse(line, None) {
-            if html_block::can_interrupt_paragraph(block_type) {
-                let text = self.pending_lines.join("\n");
-                // 같은 줄에서 종료 조건도 충족하는지 확인
-                if let Ok(html_block::HtmlBlockOk::End) = html_block::parse(line, Some(block_type)) {
-                    let node = html_block::finalize(vec![line.to_string()]);
-                    return (vec![paragraph::parse(&text), node], ParsingContext::None(NoneContext));
-                }
-                let context = ParsingContext::HtmlBlock(super::HtmlBlockContext::new(
-                    block_type,
-                    vec![line.to_string()],
-                ));
-                return (vec![paragraph::parse(&text)], context);
-            }
-        }
-
-        // Blockquote 시작이면 Paragraph 종료 후 Blockquote 시작
-        if let Ok(content) = blockquote::parse(line) {
-            let text = self.pending_lines.join("\n");
-            let context = ParsingContext::Blockquote(
-                super::BlockquoteContext::new(vec![content]),
-            );
-            return (vec![paragraph::parse(&text)], context);
-        }
-
-        // List 시작이면 Paragraph 종료 후 List 시작
-        // CommonMark 명세:
-        // - 빈 아이템은 Paragraph 인터럽트 불가
-        // - Ordered list는 1로 시작할 때만 Paragraph 인터럽트 가능 (Example 304-305)
-        if let Ok(list_item::ListItemOk::Started(start)) = list_item::parse(line) {
-            // 빈 아이템은 Paragraph 인터럽트 불가
-            if start.content.is_empty() {
-                // 줄 추가하고 계속
-                let mut pending_lines = self.pending_lines;
-                pending_lines.push(line.trim_start().to_string());
-                return (vec![], ParsingContext::Paragraph(ParagraphContext::new(pending_lines)));
-            }
-            
-            // Ordered list는 1로 시작할 때만 Paragraph 인터럽트 가능
-            if let list_item::ListMarker::Ordered { start: num, .. } = &start.marker {
-                if *num != 1 {
-                    // 1이 아닌 숫자로 시작하면 인터럽트 불가
-                    let mut pending_lines = self.pending_lines;
-                    pending_lines.push(line.trim_start().to_string());
-                    return (vec![], ParsingContext::Paragraph(ParagraphContext::new(pending_lines)));
-                }
-            }
-            
-            // Paragraph 인터럽트 가능 → List 시작
-            let text = self.pending_lines.join("\n");
-            let context = ParsingContext::List(ListContext {
-                current_content_indent: start.content_indent,
-                current_item_lines: vec![ItemLine::text(start.content.clone())],
-                first_item_start: start,
-                items: Vec::new(),
-                tight: true,
-                pending_blank_count: 0,
-            });
-            return (vec![paragraph::parse(&text)], context);
+        // 블록 시작 감지 (setext heading 포함)
+        if let Some(start) = block_start::detect(line, true) {
+            return self.handle_block_start(start, line);
         }
 
         // 줄 추가
         let mut pending_lines = self.pending_lines;
         pending_lines.push(line.trim_start().to_string());
         (vec![], ParsingContext::Paragraph(ParagraphContext::new(pending_lines)))
+    }
+
+    fn handle_block_start(self, start: BlockStart, line: &str) -> LineResult {
+        // Setext heading: paragraph를 heading으로 변환 (interrupt가 아님)
+        if let BlockStart::SetextHeading(setext) = start {
+            let text = self.pending_lines.join("\n");
+            let text_trimmed = text.trim_end();
+            let node = crate::node::BlockNode::Heading(HeadingNode::with_raw_text(
+                setext.level.to_level(),
+                inline::parse_inlines(text_trimmed),
+                &text,
+            ));
+            return (vec![node], ParsingContext::None(NoneContext));
+        }
+
+        // paragraph interrupt 가능한지 체크
+        if !block_start::can_interrupt_paragraph(&start) {
+            // interrupt 불가 → paragraph continuation
+            let mut pending_lines = self.pending_lines;
+            pending_lines.push(line.trim_start().to_string());
+            return (vec![], ParsingContext::Paragraph(ParagraphContext::new(pending_lines)));
+        }
+
+        // paragraph 종료 후 새 블록 시작
+        let text = self.pending_lines.join("\n");
+        let para_node = paragraph::parse(&text);
+
+        match start {
+            BlockStart::ThematicBreak(node) => {
+                (vec![para_node, node], ParsingContext::None(NoneContext))
+            }
+            BlockStart::AtxHeading(node) => {
+                (vec![para_node, node], ParsingContext::None(NoneContext))
+            }
+            BlockStart::FencedCode(fenced_start) => {
+                let context = ParsingContext::CodeBlockFenced(
+                    super::CodeBlockFencedContext::new(fenced_start, Vec::new()),
+                );
+                (vec![para_node], context)
+            }
+            BlockStart::HtmlBlock(block_type) => {
+                // 같은 줄에서 종료 조건도 충족하는지 확인
+                if let Ok(html_block::HtmlBlockOk::End) = html_block::parse(line, Some(block_type)) {
+                    let node = html_block::finalize(vec![line.to_string()]);
+                    return (vec![para_node, node], ParsingContext::None(NoneContext));
+                }
+                let context = ParsingContext::HtmlBlock(super::HtmlBlockContext::new(
+                    block_type,
+                    vec![line.to_string()],
+                ));
+                (vec![para_node], context)
+            }
+            BlockStart::Blockquote(content) => {
+                let context = ParsingContext::Blockquote(
+                    super::BlockquoteContext::new(vec![content]),
+                );
+                (vec![para_node], context)
+            }
+            BlockStart::ListItem(item_start) => {
+                let context = ParsingContext::List(ListContext {
+                    current_content_indent: item_start.content_indent,
+                    current_item_lines: vec![ItemLine::text(item_start.content.clone())],
+                    first_item_start: item_start,
+                    items: Vec::new(),
+                    tight: true,
+                    pending_blank_count: 0,
+                });
+                (vec![para_node], context)
+            }
+            BlockStart::IndentedCode(_) | BlockStart::SetextHeading(_) => {
+                // can_interrupt_paragraph에서 false 반환하므로 여기에 올 수 없음
+                unreachable!()
+            }
+        }
     }
 }

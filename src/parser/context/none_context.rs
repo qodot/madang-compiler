@@ -1,13 +1,11 @@
 //! NoneContext: 새 블록 시작 대기 상태
 
 use super::{
-    CodeBlockIndentedStartReason, ItemLine, LineResult, ListContext, ParagraphContext,
+    ItemLine, LineResult, ListContext, ParagraphContext,
     ParsingContext,
 };
-use crate::parser::code_block_fenced::{parse as parse_code_block_fenced, CodeBlockFencedOk};
-use crate::parser::code_block_indented::try_start as try_start_code_block_indented;
+use crate::parser::block_start::{self, BlockStart};
 use crate::parser::html_block;
-use crate::parser::{blockquote, heading, list_item, thematic_break};
 
 #[derive(Debug, Clone, Default)]
 pub struct NoneContext;
@@ -21,66 +19,9 @@ impl NoneContext {
             return (vec![], ParsingContext::None(NoneContext));
         }
 
-        // 한 줄 블록들 (Thematic Break, ATX Heading)
-        if let Ok(node) = thematic_break::parse(line) {
-            return (vec![node], ParsingContext::None(NoneContext));
-        }
-
-        if let Ok(node) = heading::parse(line) {
-            return (vec![node], ParsingContext::None(NoneContext));
-        }
-
-        // Fenced Code Block 시작 감지
-        if let Ok(CodeBlockFencedOk::Start(start)) = parse_code_block_fenced(line, None) {
-            let context = ParsingContext::CodeBlockFenced(
-                super::CodeBlockFencedContext::new(start, Vec::new()),
-            );
-            return (vec![], context);
-        }
-
-        // HTML Block 시작 감지
-        if let Ok(html_block::HtmlBlockOk::Start(block_type)) = html_block::parse(line, None) {
-            // 같은 줄에서 종료 조건도 충족하는지 확인
-            if let Ok(html_block::HtmlBlockOk::End) = html_block::parse(line, Some(block_type)) {
-                let node = html_block::finalize(vec![line.to_string()]);
-                return (vec![node], ParsingContext::None(NoneContext));
-            }
-            let context = ParsingContext::HtmlBlock(super::HtmlBlockContext::new(
-                block_type,
-                vec![line.to_string()],
-            ));
-            return (vec![], context);
-        }
-
-        // Blockquote 시작 감지
-        if let Ok(content) = blockquote::parse(line) {
-            let context = ParsingContext::Blockquote(
-                super::BlockquoteContext::new(vec![content]),
-            );
-            return (vec![], context);
-        }
-
-        // List 시작 감지
-        if let Ok(list_item::ListItemOk::Started(start)) = list_item::parse(line) {
-            let context = ParsingContext::List(ListContext {
-                current_content_indent: start.content_indent,
-                current_item_lines: vec![ItemLine::text(start.content.clone())],
-                first_item_start: start,
-                items: Vec::new(),
-                tight: true,
-                pending_blank_count: 0,
-            });
-            return (vec![], context);
-        }
-
-        // Indented Code Block 시작 감지 (List 후에 체크 - 명세상 List가 우선)
-        if let Ok(CodeBlockIndentedStartReason::Started(start)) =
-            try_start_code_block_indented(line)
-        {
-            let context = ParsingContext::CodeBlockIndented(
-                super::CodeBlockIndentedContext::new(vec![start.content], 0),
-            );
-            return (vec![], context);
+        // 블록 시작 감지 (setext heading은 NoneContext에서 불필요)
+        if let Some(start) = block_start::detect(line, false) {
+            return self.handle_block_start(start, line);
         }
 
         // 나머지는 Paragraph 시작
@@ -88,5 +29,62 @@ impl NoneContext {
             vec![line.trim_start().to_string()],
         ));
         (vec![], context)
+    }
+
+    fn handle_block_start(self, start: BlockStart, line: &str) -> LineResult {
+        match start {
+            BlockStart::ThematicBreak(node) => {
+                (vec![node], ParsingContext::None(NoneContext))
+            }
+            BlockStart::AtxHeading(node) => {
+                (vec![node], ParsingContext::None(NoneContext))
+            }
+            BlockStart::FencedCode(fenced_start) => {
+                let context = ParsingContext::CodeBlockFenced(
+                    super::CodeBlockFencedContext::new(fenced_start, Vec::new()),
+                );
+                (vec![], context)
+            }
+            BlockStart::HtmlBlock(block_type) => {
+                // 같은 줄에서 종료 조건도 충족하는지 확인
+                if let Ok(html_block::HtmlBlockOk::End) = html_block::parse(line, Some(block_type)) {
+                    let node = html_block::finalize(vec![line.to_string()]);
+                    return (vec![node], ParsingContext::None(NoneContext));
+                }
+                let context = ParsingContext::HtmlBlock(super::HtmlBlockContext::new(
+                    block_type,
+                    vec![line.to_string()],
+                ));
+                (vec![], context)
+            }
+            BlockStart::Blockquote(content) => {
+                let context = ParsingContext::Blockquote(
+                    super::BlockquoteContext::new(vec![content]),
+                );
+                (vec![], context)
+            }
+            BlockStart::ListItem(item_start) => {
+                let context = ParsingContext::List(ListContext {
+                    current_content_indent: item_start.content_indent,
+                    current_item_lines: vec![ItemLine::text(item_start.content.clone())],
+                    first_item_start: item_start,
+                    items: Vec::new(),
+                    tight: true,
+                    pending_blank_count: 0,
+                });
+                (vec![], context)
+            }
+            BlockStart::IndentedCode(code_start) => {
+                let context = ParsingContext::CodeBlockIndented(
+                    super::CodeBlockIndentedContext::new(vec![code_start.content], 0),
+                );
+                (vec![], context)
+            }
+            BlockStart::SetextHeading(_) => {
+                // NoneContext에서는 setext heading 불가 (paragraph 없음)
+                // detect에서 check_setext=false로 호출하므로 여기에 올 수 없음
+                unreachable!("SetextHeading should not be detected in NoneContext")
+            }
+        }
     }
 }
