@@ -323,12 +323,11 @@ fn parse_item_lines_with_text_only(lines: &[ItemLine]) -> Vec<BlockNode> {
 }
 
 /// 줄이 block-level 구조의 시작인지 확인 (lazy continuation 판단용)
-/// indented code block은 paragraph를 interrupt할 수 없으므로 제외
+/// paragraph를 interrupt할 수 없는 블록 (indented code, HTML type 7 등)은 제외
 fn is_block_start_for_lazy(line: &str) -> bool {
-    use crate::parser::block_start::{self, BlockStart};
+    use crate::parser::block_start;
     match block_start::detect(line, false) {
-        Some(BlockStart::IndentedCode(_)) => false,
-        Some(_) => true,
+        Some(ref start) => block_start::can_interrupt_paragraph(start),
         None => false,
     }
 }
