@@ -165,7 +165,7 @@ fn render_inline(inline: &InlineNode, out: &mut String) {
     }
 }
 
-/// image의 alt text 추출 (children에서 텍스트만)
+/// image의 alt text 추출 (children에서 텍스트만 재귀적으로)
 fn get_alt_text(children: &[InlineNode]) -> String {
     let mut text = String::new();
     for child in children {
@@ -174,6 +174,8 @@ fn get_alt_text(children: &[InlineNode]) -> String {
             InlineNode::CodeSpan(c) => text.push_str(&escape_html(&c.0)),
             InlineNode::Emphasis(e) => text.push_str(&get_alt_text(&e.children)),
             InlineNode::Strong(s) => text.push_str(&get_alt_text(&s.children)),
+            InlineNode::Link(l) => text.push_str(&get_alt_text(&l.children)),
+            InlineNode::Image(img) => text.push_str(&get_alt_text(&img.children)),
             InlineNode::SoftBreak | InlineNode::HardBreak => text.push('\n'),
             _ => {}
         }
@@ -196,14 +198,38 @@ fn escape_html(s: &str) -> String {
     out
 }
 
-/// href/src 속성용 이스케이프 (URL 인코딩은 유지)
+/// href/src 속성용 이스케이프 + percent-encoding
+///
+/// 이미 percent-encoded된 시퀀스(%XX)는 유지하고,
+/// URL-safe 문자 외의 바이트는 percent-encode 함.
 fn escape_href(s: &str) -> String {
+    // URL-safe: unreserved (RFC 3986) + 일반적으로 허용되는 URL 문자
+    const URL_SAFE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=";
+
+    let bytes = s.as_bytes();
     let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '"' => out.push_str("%22"),
-            _ => out.push(c),
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'%' && i + 2 < bytes.len()
+            && bytes[i + 1].is_ascii_hexdigit()
+            && bytes[i + 2].is_ascii_hexdigit()
+        {
+            // 이미 percent-encoded된 시퀀스 유지
+            out.push('%');
+            out.push(bytes[i + 1] as char);
+            out.push(bytes[i + 2] as char);
+            i += 3;
+        } else if b == b'&' {
+            out.push_str("&amp;");
+            i += 1;
+        } else if URL_SAFE.contains(&b) {
+            out.push(b as char);
+            i += 1;
+        } else {
+            // percent-encode
+            out.push_str(&format!("%{:02X}", b));
+            i += 1;
         }
     }
     out
