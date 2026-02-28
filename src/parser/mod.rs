@@ -1407,7 +1407,7 @@ mod tests {
         let doc = parse("``` foo\\+bar\nfoo\n```\n");
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
-            assert_eq!(cb.info.as_deref(), Some("foo\\+bar"));
+            assert_eq!(cb.info.as_deref(), Some("foo+bar"));
             assert_eq!(cb.content, "foo");
         } else {
             panic!("Expected code block");

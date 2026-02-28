@@ -154,9 +154,12 @@ fn render_inline(inline: &InlineNode, out: &mut String) {
             out.push_str(" />");
         }
         InlineNode::Autolink(a) => {
+            let href = escape_href(&a.destination)
+                .replace('[', "%5B")
+                .replace(']', "%5D");
             out.push_str(&format!(
                 "<a href=\"{}\">{}</a>",
-                escape_href(&a.destination),
+                href,
                 escape_html(&a.label),
             ));
         }

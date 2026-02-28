@@ -3,6 +3,7 @@
 use crate::node::{BlockNode, CodeBlockNode};
 use super::helpers::{count_leading_char, remove_indent};
 use super::inline::entity::resolve_entities;
+use super::inline::backslash_escape::is_ascii_punctuation;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CodeBlockFencedStart {
@@ -102,9 +103,28 @@ fn parse_continue(line: &str, start: &CodeBlockFencedStart) -> CodeBlockFencedOk
     CodeBlockFencedOk::Content(remove_indent(line, start.indent).to_string())
 }
 
+/// Backslash escape를 풀어준다 (info string용)
+fn resolve_backslash_escapes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(&next) = chars.peek() {
+                if is_ascii_punctuation(next) {
+                    result.push(next);
+                    chars.next();
+                    continue;
+                }
+            }
+        }
+        result.push(c);
+    }
+    result
+}
+
 pub fn finalize(start: CodeBlockFencedStart, content: Vec<String>) -> BlockNode {
     let content_str = content.join("\n");
-    let info = start.info.map(|s| resolve_entities(&s));
+    let info = start.info.map(|s| resolve_backslash_escapes(&resolve_entities(&s)));
     BlockNode::CodeBlock(CodeBlockNode::new(info, content_str))
 }
 
