@@ -10,7 +10,7 @@
 //! - 복합 블록 (Example 254, 259-260, 262-264)
 
 use crate::node::ListType;
-use super::helpers::count_leading_char;
+use super::helpers::{consume_indent, consume_indent_from_col, count_leading_char};
 
 // =============================================================================
 // 타입 정의
@@ -73,12 +73,9 @@ pub struct ListItemStart {
 
 impl ListItemStart {
     /// 라인에서 content를 추출하여 새 인스턴스 반환
+    /// content_indent columns만큼 소비하고 나머지를 content로 설정
     pub fn with_content_from(self, line: &str) -> Self {
-        let content = if self.content_indent >= line.len() {
-            String::new()
-        } else {
-            line[self.content_indent..].to_string()
-        };
+        let content = consume_indent(line, self.content_indent);
         Self { content, ..self }
     }
 
@@ -162,6 +159,20 @@ impl ItemLine {
 // 함수
 // =============================================================================
 
+/// column 위치 start_col에서 시작하여 leading whitespace의 column 수를 계산
+/// 탭 스톱을 올바르게 고려함
+fn calculate_indent_from_col(s: &str, start_col: usize) -> usize {
+    let mut col = start_col;
+    for c in s.chars() {
+        match c {
+            ' ' => col += 1,
+            '\t' => col += 4 - (col % 4),
+            _ => break,
+        }
+    }
+    col - start_col
+}
+
 /// List Item 시작 줄인지 확인
 /// 성공 시 Ok(Started), 실패 시 Err(사유) 반환
 pub(crate) fn parse(line: &str) -> Result<ListItemOk, ListItemErr> {
@@ -174,10 +185,10 @@ pub(crate) fn parse(line: &str) -> Result<ListItemOk, ListItemErr> {
 
     let after_indent = &line[indent..];
 
-    // Bullet 또는 Ordered 마커 시도 → content 추출
+    // Bullet 또는 Ordered 마커 시도 (content는 마커 함수에서 직접 추출)
     try_bullet_marker(after_indent, indent)
         .or_else(|| try_ordered_marker(after_indent, indent))
-        .map(|start| ListItemOk::Started(start.with_content_from(line)))
+        .map(|start| ListItemOk::Started(start))
         .ok_or(ListItemErr::NotListMarker)
 }
 
@@ -199,7 +210,7 @@ fn try_bullet_marker(s: &str, indent: usize) -> Option<ListItemStart> {
             marker: ListMarker::Bullet(first_char),
             indent,
             content_indent: indent + 1,
-            content: String::new(), // parse에서 채워짐
+            content: String::new(),
         });
     }
 
@@ -209,17 +220,20 @@ fn try_bullet_marker(s: &str, indent: usize) -> Option<ListItemStart> {
         return None;
     }
 
-    // 내용 시작 위치 계산 (마커 + 공백)
-    // spaces > 4이면 content_indent = marker + 1 (나머지는 code block indent)
-    let spaces_after_marker = count_leading_char(rest, ' ');
-    let effective_spaces = if spaces_after_marker >= 5 { 1 } else { spaces_after_marker };
-    let content_indent = indent + 1 + effective_spaces;
+    // 내용 시작 위치 계산 (마커 + 공백), column 기반 (탭 고려)
+    let marker_col = indent + 1;
+    let ws_cols = calculate_indent_from_col(rest, marker_col);
+    let effective_ws = if ws_cols >= 5 { 1 } else { ws_cols };
+    let content_indent = marker_col + effective_ws;
+
+    // 첫 줄 content 추출: marker_col 위치에서 effective_ws columns를 소비
+    let content = consume_indent_from_col(rest, effective_ws, marker_col);
 
     Some(ListItemStart {
         marker: ListMarker::Bullet(first_char),
         indent,
         content_indent,
-        content: String::new(), // parse에서 채워짐
+        content,
     })
 }
 
@@ -266,12 +280,15 @@ fn try_ordered_marker(s: &str, indent: usize) -> Option<ListItemStart> {
         return None;
     }
 
-    // content_indent 계산
-    // spaces > 4이면 content_indent = marker + 1 (나머지는 code block indent)
-    let spaces_after_delimiter = count_leading_char(after_delimiter, ' ');
+    // content_indent 계산 (column 기반, 탭 고려)
     let marker_len = num_str.len() + 1; // 숫자 + 구분자
-    let effective_spaces = if spaces_after_delimiter >= 5 { 1 } else { spaces_after_delimiter };
-    let content_indent = indent + marker_len + effective_spaces;
+    let marker_col = indent + marker_len;
+    let ws_cols = calculate_indent_from_col(after_delimiter, marker_col);
+    let effective_ws = if ws_cols >= 5 { 1 } else { ws_cols };
+    let content_indent = marker_col + effective_ws;
+
+    // 첫 줄 content 추출: marker_col 위치에서 effective_ws columns를 소비
+    let content = consume_indent_from_col(after_delimiter, effective_ws, marker_col);
 
     Some(ListItemStart {
         marker: ListMarker::Ordered {
@@ -280,7 +297,7 @@ fn try_ordered_marker(s: &str, indent: usize) -> Option<ListItemStart> {
         },
         indent,
         content_indent,
-        content: String::new(), // parse에서 채워짐
+        content,
     })
 }
 

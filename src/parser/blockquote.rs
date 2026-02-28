@@ -1,6 +1,6 @@
 //! https://spec.commonmark.org/0.31.2/#block-quotes
 
-use super::helpers::calculate_indent;
+use super::helpers::{calculate_indent, consume_indent_from_col};
 use crate::node::{BlockNode, BlockquoteNode};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,14 +26,19 @@ pub fn parse(line: &str) -> Result<String, BlockquoteErr> {
     }
 
     // > 마커 제거 후 내용 반환
+    // > 이후 column 위치는 indent + 1 (들여쓰기 + > 문자)
     let rest = &trimmed[1..];
-    let content = if rest.starts_with(' ') || rest.starts_with('\t') {
-        &rest[1..]
+    let marker_col = indent + 1;
+    let content = if rest.starts_with(' ') {
+        rest[1..].to_string()
+    } else if rest.starts_with('\t') {
+        // 탭을 포함한 1 column 소비, 나머지 whitespace를 spaces로 확장
+        consume_indent_from_col(rest, 1, marker_col)
     } else {
-        rest
+        rest.to_string()
     };
 
-    Ok(content.to_string())
+    Ok(content)
 }
 
 pub fn finalize<F>(contents: Vec<String>, parse_block: F) -> BlockNode

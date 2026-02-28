@@ -4,7 +4,7 @@ use super::{ItemLine, LineResult, ListItemStart, NoneContext, ParsingContext};
 use crate::node::{
     BlockNode, ListItemNode, ListNode, ParagraphNode,
 };
-use crate::parser::helpers::{calculate_indent, consume_indent};
+use crate::parser::helpers::{calculate_indent, consume_indent, consume_indent_and_expand};
 use crate::parser::list_item;
 use crate::parser::thematic_break;
 
@@ -82,7 +82,7 @@ impl ListContext {
             // Example 303: 4칸 들여쓰기된 마커는 텍스트 전용
             if indent > 3 && indent >= first_content_indent {
                 let strip_amount = indent.min(self.current_content_indent);
-                let content = consume_indent(line, strip_amount);
+                let content = consume_indent_and_expand(line, strip_amount);
                 return self.continue_with(ItemLine::text_only(content));
             }
         }
@@ -90,7 +90,7 @@ impl ListContext {
         // 2. Continuation line (Example 303: first_content_indent 기준)
         if indent >= first_content_indent {
             let strip_amount = indent.min(self.current_content_indent);
-            let content = consume_indent(line, strip_amount);
+            let content = consume_indent_and_expand(line, strip_amount);
             return self.continue_with(ItemLine::text(content));
         }
 

@@ -53,6 +53,69 @@ pub(crate) fn consume_indent(s: &str, n: usize) -> String {
     chars.collect()
 }
 
+/// start_col 위치에서 시작하여 n columns만큼 leading whitespace를 소비하고 나머지를 반환
+/// 탭이 partially consumed되면 남은 부분을 spaces로 채움
+/// 소비 후 남은 leading whitespace도 spaces로 확장 (탭 스톱 정렬 보존)
+pub(crate) fn consume_indent_from_col(s: &str, n: usize, start_col: usize) -> String {
+    let mut col = start_col;
+    let target = start_col + n;
+    let mut chars = s.chars().peekable();
+
+    // Phase 1: n columns 소비
+    while let Some(&c) = chars.peek() {
+        if col >= target {
+            break;
+        }
+        match c {
+            ' ' => {
+                col += 1;
+                chars.next();
+            }
+            '\t' => {
+                let tab_width = 4 - (col % 4);
+                if col + tab_width > target {
+                    // 탭이 partially consumed
+                    col = col + tab_width;
+                    chars.next();
+                    break;
+                }
+                col += tab_width;
+                chars.next();
+            }
+            _ => break,
+        }
+    }
+
+    // Phase 2: 남은 leading whitespace를 spaces로 확장 (탭 스톱 정렬 보존)
+    let mut result = " ".repeat(col - target);
+    while let Some(&c) = chars.peek() {
+        match c {
+            ' ' => {
+                result.push(' ');
+                col += 1;
+                chars.next();
+            }
+            '\t' => {
+                let tab_width = 4 - (col % 4);
+                result.push_str(&" ".repeat(tab_width));
+                col += tab_width;
+                chars.next();
+            }
+            _ => break,
+        }
+    }
+
+    // Phase 3: 나머지 non-whitespace 내용 추가
+    result.extend(chars);
+    result
+}
+
+/// n columns만큼 leading whitespace를 소비하고 나머지를 반환
+/// 소비 후 남은 leading whitespace의 탭도 spaces로 확장 (탭 스톱 정렬 보존)
+pub(crate) fn consume_indent_and_expand(s: &str, n: usize) -> String {
+    consume_indent_from_col(s, n, 0)
+}
+
 /// 문자열에서 최대 n칸의 공백/탭 제거 (tab stop 고려)
 pub(crate) fn remove_indent(s: &str, n: usize) -> &str {
     // spaces-only fast path (기존 호출 호환)
