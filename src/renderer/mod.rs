@@ -211,7 +211,7 @@ fn escape_html(s: &str) -> String {
 /// URL-safe 문자 외의 바이트는 percent-encode 함.
 fn escape_href(s: &str) -> String {
     // URL-safe: unreserved (RFC 3986) + 일반적으로 허용되는 URL 문자
-    const URL_SAFE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=";
+    const URL_SAFE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#@!$&'()*+,;=";
 
     let bytes = s.as_bytes();
     let mut out = String::with_capacity(s.len());
