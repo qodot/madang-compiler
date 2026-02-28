@@ -86,13 +86,14 @@ fn render_block(block: &BlockNode, out: &mut String) {
 fn render_list_item(item: &ListItemNode, tight: bool, out: &mut String) {
     out.push_str("<li>");
     if tight {
-        // tight list: paragraph 태그 없이 인라인만
+        // tight list: paragraph 태그 없이 인라인, non-paragraph는 줄바꿈 후 블록 렌더링
         for block in &item.children {
             match block {
                 BlockNode::Paragraph(p) => {
                     render_inlines(&p.children, out);
                 }
                 other => {
+                    out.push('\n');
                     render_block(other, out);
                 }
             }
