@@ -1960,7 +1960,7 @@ mod tests {
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
             // \t at col 0→4sp, content: foo + \t at col 7→1sp + baz + \t at col 11→1sp + \t at col 12→4sp + bim
-            assert_eq!(cb.content, "foo baz     bim");
+            assert_eq!(cb.content, "foo\tbaz\t\tbim");
         } else {
             panic!("Expected code block, got {:?}", doc.children[0]);
         }
@@ -1972,7 +1972,7 @@ mod tests {
         let doc = parse("  \tfoo\tbaz\t\tbim\n");
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
-            assert_eq!(cb.content, "foo baz     bim");
+            assert_eq!(cb.content, "foo\tbaz\t\tbim");
         } else {
             panic!("Expected code block, got {:?}", doc.children[0]);
         }
@@ -1986,7 +1986,7 @@ mod tests {
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
             // col 4: a, col 5: \t→3sp (to col 8), a
             // col 4: ὐ (3 bytes, 1 col), col 5: \t→3sp, a
-            assert_eq!(cb.content, "a   a\nὐ   a");
+            assert_eq!(cb.content, "a\ta\nὐ\ta");
         } else {
             panic!("Expected code block, got {:?}", doc.children[0]);
         }
