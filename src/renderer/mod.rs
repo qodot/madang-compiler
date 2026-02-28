@@ -42,7 +42,11 @@ fn render_block(block: &BlockNode, out: &mut String) {
                     out.push_str("<pre><code>");
                 }
             }
-            out.push_str(&escape_html(&cb.content));
+            let content = escape_html(&cb.content);
+            out.push_str(&content);
+            if !content.ends_with('\n') {
+                out.push('\n');
+            }
             out.push_str("</code></pre>\n");
         }
         BlockNode::ThematicBreak(_) => {
