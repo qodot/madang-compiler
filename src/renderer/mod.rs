@@ -44,7 +44,7 @@ fn render_block(block: &BlockNode, out: &mut String) {
             }
             let content = escape_html(&cb.content);
             out.push_str(&content);
-            if !content.ends_with('\n') {
+            if !content.is_empty() && !content.ends_with('\n') {
                 out.push('\n');
             }
             out.push_str("</code></pre>\n");
