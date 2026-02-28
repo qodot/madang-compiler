@@ -154,9 +154,12 @@ fn render_inline(inline: &InlineNode, out: &mut String) {
             out.push_str(" />");
         }
         InlineNode::Autolink(a) => {
+            let href = escape_href(&a.destination)
+                .replace('[', "%5B")
+                .replace(']', "%5D");
             out.push_str(&format!(
                 "<a href=\"{}\">{}</a>",
-                escape_href(&a.destination),
+                href,
                 escape_html(&a.label),
             ));
         }
@@ -211,7 +214,7 @@ fn escape_html(s: &str) -> String {
 /// URL-safe 문자 외의 바이트는 percent-encode 함.
 fn escape_href(s: &str) -> String {
     // URL-safe: unreserved (RFC 3986) + 일반적으로 허용되는 URL 문자
-    const URL_SAFE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#@!$&'()*+,;=";
+    const URL_SAFE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=";
 
     let bytes = s.as_bytes();
     let mut out = String::with_capacity(s.len());
