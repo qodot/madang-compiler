@@ -115,24 +115,8 @@ fn remove_leading_indent(line: &str, n: usize) -> String {
         }
     }
 
-    // Phase 2: 나머지 content — 탭을 tab stop 기준으로 확장
-    let mut result = String::new();
-    let mut content_col = col;
-    for (_, c) in chars {
-        match c {
-            '\t' => {
-                let tw = 4 - (content_col % 4);
-                for _ in 0..tw {
-                    result.push(' ');
-                }
-                content_col += tw;
-            }
-            _ => {
-                result.push(c);
-                content_col += 1;
-            }
-        }
-    }
+    // Phase 2: 나머지 content — 탭은 원본 그대로 보존 (CommonMark 명세)
+    let result: String = chars.map(|(_, c)| c).collect();
     result
 }
 
@@ -233,11 +217,11 @@ mod tests {
     /// 탭 관련 indented code block 테스트 (CommonMark 명세 Section 2.2 Tabs)
     #[rstest]
     // Example 1: 탭으로 인덴트된 코드 블록
-    #[case("\tfoo\tbaz\t\tbim", vec![BlockNode::code_block(None, "foo baz     bim")])]
+    #[case("\tfoo\tbaz\t\tbim", vec![BlockNode::code_block(None, "foo\tbaz\t\tbim")])]
     // Example 2: 2칸 공백 + 탭 (탭이 나머지 2칸을 채워 4칸 인덴트)
-    #[case("  \tfoo\tbaz\t\tbim", vec![BlockNode::code_block(None, "foo baz     bim")])]
+    #[case("  \tfoo\tbaz\t\tbim", vec![BlockNode::code_block(None, "foo\tbaz\t\tbim")])]
     // Example 3: 탭 위치에 따른 정렬 (탭이 spaces로 확장됨)
-    #[case("    a\ta\n    ὐ\ta", vec![BlockNode::code_block(None, "a   a\nὐ   a")])]
+    #[case("    a\ta\n    ὐ\ta", vec![BlockNode::code_block(None, "a\ta\nὐ\ta")])]
     // Example 8: space + tab 혼용 (4칸 space 인덴트 후, 다음 줄은 탭으로 인덴트)
     #[case("    foo\n\tbar", vec![BlockNode::code_block(None, "foo\nbar")])]
     fn test_code_block_indented_tabs(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
