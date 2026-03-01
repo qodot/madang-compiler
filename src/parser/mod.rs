@@ -127,36 +127,47 @@ fn finalize_context(context: ParsingContext, mut nodes: Vec<BlockNode>) -> Vec<B
 }
 
 /// 단일 블록 파싱 (blockquote 내부 등에서 사용)
-pub(crate) fn parse_block_simple(block: &str) -> BlockNode {
+pub(crate) fn parse_block_simple(block: &str) -> Vec<BlockNode> {
     if let Some(node) = code_block_fenced::parse_text(block) {
-        return node;
+        return vec![node];
     }
 
     // 중첩 blockquote 처리를 위해 blockquote 파싱 시도
     if let Some(node) = blockquote::parse_text(block, parse_block_simple) {
-        return node;
+        return vec![node];
     }
 
     if let Ok(node) = thematic_break::parse(block) {
-        return node;
+        return vec![node];
     }
 
     if let Ok(code_block_indented::CodeBlockIndentedStartReason::Started(start)) =
         code_block_indented::try_start(block)
     {
-        return BlockNode::CodeBlock(CodeBlockNode::new(None, start.content));
+        return vec![BlockNode::CodeBlock(CodeBlockNode::new(None, start.content))];
     }
 
     if let Ok(node) = heading::parse(block) {
-        return node;
+        return vec![node];
     }
 
     // HTML block detection for simple block parsing
     if let Ok(html_block::HtmlBlockOk::Start(_)) = html_block::parse(block, None) {
-        return html_block::finalize(vec![block.to_string()]);
+        return vec![html_block::finalize(vec![block.to_string()])];
     }
 
-    paragraph::parse(block.trim_start())
+    // List item detection: 첫 줄이 list item이면 전체를 parse_blocks로 파싱
+    // (Example 292: blockquote 내 lazy continuation으로 합쳐진 list item 처리)
+    if let Some(first_line) = block.lines().next() {
+        if let Ok(list_item::ListItemOk::Started(_)) = list_item::parse(first_line) {
+            let blocks = parse_blocks(block);
+            if !blocks.is_empty() {
+                return blocks;
+            }
+        }
+    }
+
+    vec![paragraph::parse(block.trim_start())]
 }
 
 /// Pass 2: 모든 paragraph에서 link reference definitions를 추출한다.

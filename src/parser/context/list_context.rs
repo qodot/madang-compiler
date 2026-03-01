@@ -78,6 +78,11 @@ impl ListContext {
                 // 다른 마커 타입 → 리스트 종료
                 return self.end_and_reprocess(line);
             }
+            // 빈 줄 이후 under-indented 줄은 리스트 종료 (같은 타입 아이템만 예외)
+            // Example 313: "    3. c"는 content_indent 미만이고 빈 줄 이후이므로 코드 블록
+            if self.pending_blank_count > 0 {
+                return self.end_and_reprocess(line);
+            }
             // 4칸 이상 들여쓰기 + first_content_indent 이상이면 text_only continuation
             // Example 303: 4칸 들여쓰기된 마커는 텍스트 전용
             if indent > 3 && indent >= first_content_indent {
@@ -196,15 +201,17 @@ fn parse_item_lines_with_blank_info(lines: &[ItemLine]) -> (Vec<BlockNode>, bool
             .map(|l| l.content.as_str())
             .collect::<Vec<_>>()
             .join("\n");
-        let doc = crate::parser::parse(&content);
-        
+        // parse_blocks를 사용: ref def를 제거하지 않으므로 tight/loose 판정이 정확함
+        // ref def 추출은 최상위 parse()에서 extract_link_ref_defs가 재귀적으로 수행
+        let blocks = crate::parser::parse_blocks(&content);
+
         // 아이템 내 **직접** 블록 사이 빈 줄 확인
         // sublist 내의 빈 줄은 제외해야 함
-        // 직접 블록: doc.children의 최상위 블록들
+        // 직접 블록: blocks의 최상위 블록들
         // 빈 줄로 분리된 직접 블록이 2개 이상인지 확인
-        let has_blank = has_direct_blank_between_blocks(lines, &doc.children);
-        
-        (doc.children, has_blank)
+        let has_blank = has_direct_blank_between_blocks(lines, &blocks);
+
+        (blocks, has_blank)
     }
 }
 
@@ -248,28 +255,58 @@ fn has_direct_blank_between_blocks(lines: &[ItemLine], blocks: &[BlockNode]) -> 
     // foo와 sublist 사이에는 빈 줄 없음
     // sublist와 baz 사이에 빈 줄 있음 → loose
     
-    // blocks에서 List와 비-List의 패턴 확인
-    // List 다음에 비-List가 있고, 그 사이에 빈 줄이 있으면 loose
-    let mut prev_was_list = false;
-    let mut found_blank_after_list = false;
-    
-    for (i, block) in blocks.iter().enumerate() {
-        let is_list = matches!(block, BlockNode::List(_));
-        
-        if prev_was_list && !is_list {
-            // List 다음에 비-List → 사이에 빈 줄 있는지 확인 필요
-            // 간단한 휴리스틱: blocks 순서대로 나왔고 빈 줄이 있다면 사이에 있을 가능성
-            if i > 0 && has_blank {
-                found_blank_after_list = true;
-            }
-        }
-        
-        prev_was_list = is_list;
+    // 직접 자식 블록 사이에 빈 줄이 있는지 판정
+    // sublist 내부의 빈 줄은 outer를 loose로 만들지 않음
+    //
+    // 전략: lines를 순서대로 스캔하여
+    // - non-empty content 뒤에 blank가 오고, 그 뒤에 또 non-empty content가 오면 loose
+    // - 단, sublist로 흡수되는 blank는 제외해야 함
+    //
+    // 간단한 근사: 비-List 블록이 2개 이상이면 사이에 빈 줄이 있을 수 있음 (기존 로직)
+    // 비-List 1개 + List 1개인 경우: 빈 줄이 비-List와 List 사이에 있는지 확인
+    if non_list_count >= 2 {
+        return true;
     }
 
-    // 더 정확한 판정이 필요하면 lines 분석 필요
-    // 현재는 List 다음 비-List 패턴이 있고 빈 줄이 있으면 loose로 판정
-    found_blank_after_list
+    // 비-List 블록이 있고 List 블록도 있는 경우
+    // sublist 시작(list marker) 전에 빈 줄이 있으면 loose
+    // sublist 시작 후의 빈 줄은 sublist 내부에 속하므로 무시
+    let has_list = blocks.iter().any(|b| matches!(b, BlockNode::List(_)));
+    if non_list_count >= 1 && has_list {
+        // sublist 시작 line 찾기: list marker로 시작하는 첫 번째 line
+        let mut saw_content = false;
+        for line in lines {
+            let trimmed = line.content.trim();
+            let is_blank = trimmed.is_empty();
+            let is_list_marker = !is_blank && !line.text_only && (
+                trimmed.starts_with("- ") || trimmed.starts_with("* ") || 
+                trimmed.starts_with("+ ") || trimmed == "-" || trimmed == "*" || trimmed == "+" ||
+                // ordered: digit(s) + . or ) + space
+                trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()) && (
+                    trimmed.contains(". ") || trimmed.contains(") ")
+                )
+            );
+
+            if !saw_content && !is_blank {
+                saw_content = true;
+                continue;
+            }
+
+            if saw_content && is_blank {
+                // 빈 줄 발견 — sublist 시작 전이면 loose
+                // 다음 non-blank line이 list marker면 loose (빈 줄이 paragraph와 sublist 사이)
+                // 다음 non-blank line이 list marker가 아니면 이것도 loose (paragraph 사이 빈 줄)
+                return true;
+            }
+
+            if saw_content && is_list_marker {
+                // sublist 시작 — 이후의 빈 줄은 sublist 내부
+                break;
+            }
+        }
+    }
+
+    false
 }
 
 /// text_only가 있는 아이템 내용 파싱

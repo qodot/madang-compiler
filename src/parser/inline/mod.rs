@@ -39,6 +39,8 @@ struct BracketEntry {
     active: bool,
     /// image bracket (`![`) 여부
     image: bool,
+    /// raw input에서 content 시작 위치 (`[` 또는 `![` 다음)
+    raw_start: usize,
 }
 
 /// raw 텍스트를 인라인 노드들로 파싱
@@ -209,6 +211,7 @@ impl<'a> InlineParser<'a> {
             node_index: self.result.len() - 1,
             active: true,
             image: true,
+            raw_start: self.pos + 2,
         });
         self.pos += 2;
         self.force_new_text = true;
@@ -220,6 +223,7 @@ impl<'a> InlineParser<'a> {
             node_index: self.result.len() - 1,
             active: true,
             image: false,
+            raw_start: self.pos + 1,
         });
         self.pos += 1;
         self.force_new_text = true;
@@ -250,8 +254,9 @@ impl<'a> InlineParser<'a> {
         // inline link 실패 → reference link 시도
         if bracket.active {
             if let Some(rm) = self.ref_map {
+                let raw_label = &self.raw[bracket.raw_start..self.pos];
                 if let Some((ref_result, consumed)) = try_reference_link(
-                    &self.raw[self.pos..], &self.result, &bracket, rm,
+                    &self.raw[self.pos..], &self.result, &bracket, rm, raw_label,
                 ) {
                     let children = self.extract_children(bracket.node_index);
                     self.result.push(ref_result.with_children(children));
@@ -410,10 +415,9 @@ fn try_reference_link(
     result: &[InlineNode],
     bracket: &BracketEntry,
     ref_map: &crate::parser::link_ref_def::RefMap,
+    raw_label: &str,
 ) -> Option<(RefLinkResult, usize)> {
     let bytes = input.as_bytes();
-    let bracket_pos = bracket.node_index;
-    let label_text = extract_label_from_nodes(&result[(bracket_pos + 1)..]);
 
     // 패턴 1: `][ref]` — full reference
     if bytes.len() > 1 && bytes[1] == b'[' {
@@ -428,12 +432,14 @@ fn try_reference_link(
                     };
                     return Some((r, 1 + label_consumed));
                 }
+                // full ref label 파싱 성공했지만 ref_map에 없음 → shortcut/collapsed 시도 안 함
+                return None;
             }
         }
 
-        // `][]` — collapsed reference
+        // `][]` — collapsed reference (raw_label 사용)
         if bytes.len() > 2 && bytes[1] == b'[' && bytes[2] == b']' {
-            let normalized = crate::parser::link_ref_def::normalize_label(&label_text);
+            let normalized = crate::parser::link_ref_def::normalize_label(raw_label);
             if let Some((dest, title)) = ref_map.get(&normalized) {
                 let r = if bracket.image {
                     RefLinkResult::Image { destination: dest.clone(), title: title.clone() }
@@ -445,8 +451,8 @@ fn try_reference_link(
         }
     }
 
-    // 패턴 3: `]` — shortcut reference
-    let normalized = crate::parser::link_ref_def::normalize_label(&label_text);
+    // 패턴 3: `]` — shortcut reference (raw_label 사용)
+    let normalized = crate::parser::link_ref_def::normalize_label(raw_label);
     if let Some((dest, title)) = ref_map.get(&normalized) {
         let r = if bracket.image {
             RefLinkResult::Image { destination: dest.clone(), title: title.clone() }
