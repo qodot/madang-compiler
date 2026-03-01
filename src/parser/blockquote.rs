@@ -43,7 +43,7 @@ pub fn parse(line: &str) -> Result<String, BlockquoteErr> {
 
 pub fn finalize<F>(contents: Vec<String>, parse_block: F) -> BlockNode
 where
-    F: Fn(&str) -> BlockNode,
+    F: Fn(&str) -> Vec<BlockNode>,
 {
     let text = contents.join("\n");
 
@@ -69,7 +69,7 @@ where
 /// 블록 파싱 시 나머지 줄 처리 (ATX heading 등 단일 줄 블록 + 나머지 paragraph)
 fn parse_block_with_remainder<F>(block: &str, parse_block: &F) -> Vec<BlockNode>
 where
-    F: Fn(&str) -> BlockNode,
+    F: Fn(&str) -> Vec<BlockNode>,
 {
     // ATX heading 감지: 첫 줄이 heading이면 나머지는 별도 paragraph
     let first_line = block.split('\n').next().unwrap_or(block);
@@ -80,15 +80,15 @@ where
             return vec![heading_node];
         }
         let mut result = vec![heading_node];
-        result.push(parse_block(rest));
+        result.extend(parse_block(rest));
         return result;
     }
-    vec![parse_block(block)]
+    parse_block(block)
 }
 
 pub fn parse_text<F>(text: &str, parse_block: F) -> Option<BlockNode>
 where
-    F: Fn(&str) -> BlockNode,
+    F: Fn(&str) -> Vec<BlockNode>,
 {
     let mut contents: Vec<String> = Vec::new();
 
