@@ -308,6 +308,7 @@ mod tests {
     use super::*;
     use crate::node::{BlockNode, InlineNode, ListItemNode};
     use crate::parser::parse as parse_doc;
+    use crate::Spec;
     use rstest::rstest;
 
     // 5.2 List Items - 마커 인식 (parse) 성공 케이스
@@ -587,7 +588,7 @@ mod tests {
         BlockNode::bullet_list(false, vec![ListItemNode::new(vec![]), ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])])]),
     ])]
     fn test_list_item(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse_doc(input);
+        let doc = parse_doc(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -649,7 +650,7 @@ mod tests {
         ])
     ])]
     fn test_list_item_resolved(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse_doc(input);
+        let doc = parse_doc(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -666,7 +667,7 @@ mod tests {
         ])]),
     ])]
     fn test_list_item_nested_blockquote(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse_doc(input);
+        let doc = parse_doc(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 }

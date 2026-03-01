@@ -95,6 +95,7 @@ pub fn try_start(line: &str, indent: usize) -> Result<HeadingSetextStartReason, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Spec;
     use crate::node::{BlockNode, InlineNode};
     use rstest::rstest;
 
@@ -218,7 +219,7 @@ mod tests {
     // 밑줄 뒤 비공백 문자 → Paragraph continuation
     #[case("Foo\n=== bar", vec![BlockNode::paragraph(vec![InlineNode::text("Foo"), InlineNode::SoftBreak, InlineNode::text("=== bar")])])]
     fn test_setext_heading(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = crate::parse(input);
+        let doc = crate::parse(input, crate::Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 

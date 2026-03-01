@@ -351,7 +351,7 @@ fn parse_item_lines_with_text_only(lines: &[ItemLine]) -> Vec<BlockNode> {
             )));
         } else {
             // 일반 청크는 전체 파서로 파싱
-            let doc = crate::parser::parse(&content);
+            let doc = crate::parser::parse(&content, crate::Spec::default());
             result.extend(doc.children);
         }
     }

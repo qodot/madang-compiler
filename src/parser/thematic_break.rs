@@ -59,6 +59,7 @@ pub fn parse(line: &str) -> Result<BlockNode, ThematicBreakErr> {
 mod tests {
     use crate::node::{BlockNode, InlineNode};
     use crate::parser::parse;
+    use crate::Spec;
     use rstest::rstest;
 
     #[rstest]
@@ -109,7 +110,7 @@ mod tests {
     #[case("***   ", vec![BlockNode::thematic_break()])]
     #[case("***a", vec![BlockNode::paragraph(vec![InlineNode::text("***a")])])]
     fn test_thematic_break(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 

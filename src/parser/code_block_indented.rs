@@ -188,7 +188,7 @@ mod tests {
     // Example 118: 후행 공백은 유지됨
     #[case("    foo  ", vec![BlockNode::code_block(None, "foo  ")])]
     fn test_code_block_indented(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = crate::parse(input);
+        let doc = crate::parse(input, crate::Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -225,7 +225,7 @@ mod tests {
     // Example 8: space + tab 혼용 (4칸 space 인덴트 후, 다음 줄은 탭으로 인덴트)
     #[case("    foo\n\tbar", vec![BlockNode::code_block(None, "foo\nbar")])]
     fn test_code_block_indented_tabs(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = crate::parse(input);
+        let doc = crate::parse(input, crate::Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 }

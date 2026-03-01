@@ -9,6 +9,7 @@
 mod tests {
     use crate::node::{BlockNode, InlineNode, ListItemNode};
     use crate::parser::parse;
+    use crate::Spec;
     use rstest::rstest;
 
     // =========================================================================
@@ -25,7 +26,7 @@ mod tests {
         ]),
     ])]
     fn test_precedence(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -215,7 +216,7 @@ mod tests {
         ])
     ])]
     fn test_list(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
