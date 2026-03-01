@@ -16,13 +16,28 @@ pub struct LinkRefDef {
 /// Reference map: normalized label → (destination, title)
 pub type RefMap = HashMap<String, (String, Option<String>)>;
 
-/// label을 정규화한다: 대소문자 무시, 연속 공백을 하나로, 앞뒤 공백 제거
+/// label을 정규화한다: Unicode case fold, 연속 공백을 하나로, 앞뒤 공백 제거
 pub fn normalize_label(label: &str) -> String {
-    label
+    let lowered = label
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-        .to_lowercase()
+        .to_lowercase();
+    // Unicode full case folding: ß (U+00DF) → ss
+    // to_lowercase()는 ẞ (U+1E9E) → ß 변환하므로, ß → ss 추가로 full case fold 완성
+    unicode_casefold(&lowered)
+}
+
+/// Unicode full case folding (to_lowercase 이후 추가 처리)
+fn unicode_casefold(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            'ß' => result.push_str("ss"),
+            _ => result.push(c),
+        }
+    }
+    result
 }
 
 /// 텍스트에서 link reference definitions를 추출한다.

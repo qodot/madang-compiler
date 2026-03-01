@@ -174,20 +174,29 @@ fn try_closing_tag(input: &str) -> Option<RawHtmlResult> {
     None
 }
 
-/// HTML comment: `<!--` ... `-->` (but not `<!-->` or `<!--->`)
+/// HTML comment: `<!--` ... `-->`
+/// CommonMark 0.31.2: `<!-->` and `<!--->` are also valid comments
 fn try_html_comment(input: &str) -> Option<RawHtmlResult> {
     if !input.starts_with("<!--") {
         return None;
     }
 
-    // `<!--` followed by text, not starting with `>` or `->`, ending with `-->`
-    // But simpler: `<!-->` and `<!--->` are invalid
-    // Per CommonMark: `<!--` + text + `-->` where text must not start with `>` or `->`
     let rest = &input[4..];
 
-    // text must not start with `>` or `->`
-    if rest.starts_with('>') || rest.starts_with("->") {
-        return None;
+    // `<!-->` — empty comment ending immediately
+    if rest.starts_with('>') {
+        return Some(RawHtmlResult {
+            content: "<!-->".to_string(),
+            bytes_consumed: 5,
+        });
+    }
+
+    // `<!--->` — comment with single dash
+    if rest.starts_with("->") {
+        return Some(RawHtmlResult {
+            content: "<!--->".to_string(),
+            bytes_consumed: 6,
+        });
     }
 
     // Find first `-->`
@@ -296,9 +305,9 @@ mod tests {
     #[case("</a href=\"foo\">", None)]
     // Example 625: HTML comment
     #[case("<!-- this is a --\ncomment - with hyphens -->", Some("<!-- this is a --\ncomment - with hyphens -->"))]
-    // Example 626: invalid comments
-    #[case("<!--> foo -->", None)]
-    #[case("<!---> foo -->", None)]
+    // Example 626: valid short comments (CommonMark 0.31.2)
+    #[case("<!--> foo -->", Some("<!-->"))]
+    #[case("<!---> foo -->", Some("<!--->"))]
     // Example 627: processing instruction
     #[case("<?php echo $a; ?>", Some("<?php echo $a; ?>"))]
     // Example 628: declaration

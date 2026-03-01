@@ -1,6 +1,6 @@
 //! https://spec.commonmark.org/0.31.2/#block-quotes
 
-use super::helpers::calculate_indent;
+use super::helpers::{calculate_indent, consume_indent_from_col};
 use crate::node::{BlockNode, BlockquoteNode};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,14 +26,19 @@ pub fn parse(line: &str) -> Result<String, BlockquoteErr> {
     }
 
     // > 마커 제거 후 내용 반환
+    // > 이후 column 위치는 indent + 1 (들여쓰기 + > 문자)
     let rest = &trimmed[1..];
-    let content = if rest.starts_with(' ') || rest.starts_with('\t') {
-        &rest[1..]
+    let marker_col = indent + 1;
+    let content = if rest.starts_with(' ') {
+        rest[1..].to_string()
+    } else if rest.starts_with('\t') {
+        // 탭을 포함한 1 column 소비, 나머지 whitespace를 spaces로 확장
+        consume_indent_from_col(rest, 1, marker_col)
     } else {
-        rest
+        rest.to_string()
     };
 
-    Ok(content.to_string())
+    Ok(content)
 }
 
 pub fn finalize<F>(contents: Vec<String>, parse_block: F) -> BlockNode
@@ -47,18 +52,38 @@ where
     // 그 외는 전체 파서로 파싱 (list 등 복잡한 구조 지원)
     let has_lazy = contents.iter().any(|c| c.contains('\n'));
     let children: Vec<BlockNode> = if has_lazy {
-        // lazy continuation이 있으면 기존 방식 (parse_block_simple)
+        // lazy continuation이 있으면 \n\n 분리 후 각각 파싱
         text.split("\n\n")
             .filter(|s| !s.is_empty())
-            .map(|s| parse_block(s))
+            .flat_map(|s| parse_block_with_remainder(s, &parse_block))
             .collect()
     } else {
         // lazy continuation 없으면 전체 파서로 한번에 파싱 (list continuation 등 지원)
-        let doc = crate::parser::parse(&text);
-        doc.children
+        // parse_blocks를 사용하여 ref def 추출은 최상위에서 수행
+        crate::parser::parse_blocks(&text)
     };
 
     BlockNode::Blockquote(BlockquoteNode::new(children))
+}
+
+/// 블록 파싱 시 나머지 줄 처리 (ATX heading 등 단일 줄 블록 + 나머지 paragraph)
+fn parse_block_with_remainder<F>(block: &str, parse_block: &F) -> Vec<BlockNode>
+where
+    F: Fn(&str) -> BlockNode,
+{
+    // ATX heading 감지: 첫 줄이 heading이면 나머지는 별도 paragraph
+    let first_line = block.split('\n').next().unwrap_or(block);
+    if let Ok(heading_node) = crate::parser::heading::parse(first_line) {
+        let rest = &block[first_line.len()..];
+        let rest = rest.strip_prefix('\n').unwrap_or(rest);
+        if rest.trim().is_empty() {
+            return vec![heading_node];
+        }
+        let mut result = vec![heading_node];
+        result.push(parse_block(rest));
+        return result;
+    }
+    vec![parse_block(block)]
 }
 
 pub fn parse_text<F>(text: &str, parse_block: F) -> Option<BlockNode>

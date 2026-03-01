@@ -10,7 +10,7 @@
 //! - 복합 블록 (Example 254, 259-260, 262-264)
 
 use crate::node::ListType;
-use super::helpers::count_leading_char;
+use super::helpers::{consume_indent, consume_indent_from_col, count_leading_char};
 
 // =============================================================================
 // 타입 정의
@@ -73,12 +73,9 @@ pub struct ListItemStart {
 
 impl ListItemStart {
     /// 라인에서 content를 추출하여 새 인스턴스 반환
+    /// content_indent columns만큼 소비하고 나머지를 content로 설정
     pub fn with_content_from(self, line: &str) -> Self {
-        let content = if self.content_indent >= line.len() {
-            String::new()
-        } else {
-            line[self.content_indent..].to_string()
-        };
+        let content = consume_indent(line, self.content_indent);
         Self { content, ..self }
     }
 
@@ -162,6 +159,20 @@ impl ItemLine {
 // 함수
 // =============================================================================
 
+/// column 위치 start_col에서 시작하여 leading whitespace의 column 수를 계산
+/// 탭 스톱을 올바르게 고려함
+fn calculate_indent_from_col(s: &str, start_col: usize) -> usize {
+    let mut col = start_col;
+    for c in s.chars() {
+        match c {
+            ' ' => col += 1,
+            '\t' => col += 4 - (col % 4),
+            _ => break,
+        }
+    }
+    col - start_col
+}
+
 /// List Item 시작 줄인지 확인
 /// 성공 시 Ok(Started), 실패 시 Err(사유) 반환
 pub(crate) fn parse(line: &str) -> Result<ListItemOk, ListItemErr> {
@@ -174,10 +185,10 @@ pub(crate) fn parse(line: &str) -> Result<ListItemOk, ListItemErr> {
 
     let after_indent = &line[indent..];
 
-    // Bullet 또는 Ordered 마커 시도 → content 추출
+    // Bullet 또는 Ordered 마커 시도 (content는 마커 함수에서 직접 추출)
     try_bullet_marker(after_indent, indent)
         .or_else(|| try_ordered_marker(after_indent, indent))
-        .map(|start| ListItemOk::Started(start.with_content_from(line)))
+        .map(|start| ListItemOk::Started(start))
         .ok_or(ListItemErr::NotListMarker)
 }
 
@@ -195,11 +206,12 @@ fn try_bullet_marker(s: &str, indent: usize) -> Option<ListItemStart> {
     let rest = &s[1..];
     if rest.is_empty() {
         // 마커만 있고 끝 → 빈 아이템으로 허용
+        // content_indent = indent + marker_width + 1 (spec Rule 3: blank-start item)
         return Some(ListItemStart {
             marker: ListMarker::Bullet(first_char),
             indent,
-            content_indent: indent + 1,
-            content: String::new(), // parse에서 채워짐
+            content_indent: indent + 2,
+            content: String::new(),
         });
     }
 
@@ -209,17 +221,20 @@ fn try_bullet_marker(s: &str, indent: usize) -> Option<ListItemStart> {
         return None;
     }
 
-    // 내용 시작 위치 계산 (마커 + 공백)
-    // spaces > 4이면 content_indent = marker + 1 (나머지는 code block indent)
-    let spaces_after_marker = count_leading_char(rest, ' ');
-    let effective_spaces = if spaces_after_marker >= 5 { 1 } else { spaces_after_marker };
-    let content_indent = indent + 1 + effective_spaces;
+    // 내용 시작 위치 계산 (마커 + 공백), column 기반 (탭 고려)
+    let marker_col = indent + 1;
+    let ws_cols = calculate_indent_from_col(rest, marker_col);
+    let effective_ws = if ws_cols >= 5 { 1 } else { ws_cols };
+    let content_indent = marker_col + effective_ws;
+
+    // 첫 줄 content 추출: marker_col 위치에서 effective_ws columns를 소비
+    let content = consume_indent_from_col(rest, effective_ws, marker_col);
 
     Some(ListItemStart {
         marker: ListMarker::Bullet(first_char),
         indent,
         content_indent,
-        content: String::new(), // parse에서 채워짐
+        content,
     })
 }
 
@@ -248,6 +263,7 @@ fn try_ordered_marker(s: &str, indent: usize) -> Option<ListItemStart> {
     let after_delimiter = &rest[1..];
     if after_delimiter.is_empty() {
         // 구분자만 있고 끝 → 빈 아이템
+        // content_indent = indent + marker_len + 1 (spec Rule 3: blank-start item)
         let marker_len = num_str.len() + 1; // 숫자 + 구분자
         return Some(ListItemStart {
             marker: ListMarker::Ordered {
@@ -255,8 +271,8 @@ fn try_ordered_marker(s: &str, indent: usize) -> Option<ListItemStart> {
                 delimiter,
             },
             indent,
-            content_indent: indent + marker_len,
-            content: String::new(), // parse에서 채워짐
+            content_indent: indent + marker_len + 1,
+            content: String::new(),
         });
     }
 
@@ -266,12 +282,15 @@ fn try_ordered_marker(s: &str, indent: usize) -> Option<ListItemStart> {
         return None;
     }
 
-    // content_indent 계산
-    // spaces > 4이면 content_indent = marker + 1 (나머지는 code block indent)
-    let spaces_after_delimiter = count_leading_char(after_delimiter, ' ');
+    // content_indent 계산 (column 기반, 탭 고려)
     let marker_len = num_str.len() + 1; // 숫자 + 구분자
-    let effective_spaces = if spaces_after_delimiter >= 5 { 1 } else { spaces_after_delimiter };
-    let content_indent = indent + marker_len + effective_spaces;
+    let marker_col = indent + marker_len;
+    let ws_cols = calculate_indent_from_col(after_delimiter, marker_col);
+    let effective_ws = if ws_cols >= 5 { 1 } else { ws_cols };
+    let content_indent = marker_col + effective_ws;
+
+    // 첫 줄 content 추출: marker_col 위치에서 effective_ws columns를 소비
+    let content = consume_indent_from_col(after_delimiter, effective_ws, marker_col);
 
     Some(ListItemStart {
         marker: ListMarker::Ordered {
@@ -280,7 +299,7 @@ fn try_ordered_marker(s: &str, indent: usize) -> Option<ListItemStart> {
         },
         indent,
         content_indent,
-        content: String::new(), // parse에서 채워짐
+        content,
     })
 }
 
@@ -306,10 +325,10 @@ mod tests {
     #[case("-   item", ListItemStart::bullet('-', 0, 4, "item"))]
     #[case("-    item", ListItemStart::bullet('-', 0, 5, "item"))]
     #[case("-     item", ListItemStart::bullet('-', 0, 2, "    item"))]  // 5+ spaces → N=1, 나머지는 content
-    // Bullet 빈 아이템
-    #[case("-", ListItemStart::bullet('-', 0, 1, ""))]
-    #[case("+", ListItemStart::bullet('+', 0, 1, ""))]
-    #[case("*", ListItemStart::bullet('*', 0, 1, ""))]
+    // Bullet 빈 아이템 (content_indent = indent + 2, spec Rule 3)
+    #[case("-", ListItemStart::bullet('-', 0, 2, ""))]
+    #[case("+", ListItemStart::bullet('+', 0, 2, ""))]
+    #[case("*", ListItemStart::bullet('*', 0, 2, ""))]
     // 기본 Ordered 마커
     #[case("1. item", ListItemStart::ordered(1, '.', 0, 3, "item"))]
     #[case("2. item", ListItemStart::ordered(2, '.', 0, 3, "item"))]
@@ -331,9 +350,9 @@ mod tests {
     #[case("0. ok", ListItemStart::ordered(0, '.', 0, 3, "ok"))]
     // Example 268: 선행 0 허용 (값은 3)
     #[case("003. ok", ListItemStart::ordered(3, '.', 0, 5, "ok"))]
-    // Ordered 빈 아이템
-    #[case("1.", ListItemStart::ordered(1, '.', 0, 2, ""))]
-    #[case("1)", ListItemStart::ordered(1, ')', 0, 2, ""))]
+    // Ordered 빈 아이템 (content_indent = indent + marker_len + 1, spec Rule 3)
+    #[case("1.", ListItemStart::ordered(1, '.', 0, 3, ""))]
+    #[case("1)", ListItemStart::ordered(1, ')', 0, 3, ""))]
     fn test_parse_ok(
         #[case] input: &str,
         #[case] expected: ListItemStart,
@@ -518,12 +537,11 @@ mod tests {
         ])
     ])]
     // Example 278: 빈 줄로 시작하는 아이템
-    // NOTE: 세 번째 아이템 코드 블록은 명세상 "baz"지만 현재 " baz" (향후 개선)
     #[case("-\n  foo\n-\n  ```\n  bar\n  ```\n-\n      baz", vec![
         BlockNode::bullet_list(true, vec![
             ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])]),
             ListItemNode::new(vec![BlockNode::code_block(None, "bar")]),
-            ListItemNode::new(vec![BlockNode::code_block(None, " baz")]),
+            ListItemNode::new(vec![BlockNode::code_block(None, "baz")]),
         ])
     ])]
     // Example 281: 중간 빈 아이템 (bullet)

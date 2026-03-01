@@ -62,6 +62,24 @@ pub fn parse(input: &str) -> DocumentNode {
     DocumentNode::new(children)
 }
 
+/// 블록 구조만 파싱 (ref def 추출 없이)
+/// blockquote 등 컨테이너 블록 내부 파싱에 사용.
+/// ref def 추출은 최상위 parse()에서 재귀적으로 수행.
+pub(crate) fn parse_blocks(input: &str) -> Vec<BlockNode> {
+    if input.is_empty() {
+        return vec![];
+    }
+
+    let input = input.to_owned();
+
+    let (children, final_context) = input.lines().fold(
+        (Vec::new(), ParsingContext::None(NoneContext)),
+        |(children, context), line| process_line(line, context, children),
+    );
+
+    finalize_context(final_context, children)
+}
+
 /// 한 줄 처리 후 새 상태 반환
 fn process_line(line: &str, context: ParsingContext, nodes: Vec<BlockNode>) -> ParserState {
     let (new_nodes, new_context) = match context {
@@ -148,64 +166,137 @@ fn extract_link_ref_defs(
     children: Vec<BlockNode>,
     ref_map: &mut link_ref_def::RefMap,
 ) -> Vec<BlockNode> {
-    children
-        .into_iter()
-        .filter_map(|node| match node {
+    // setext heading이 collapse되면 밑줄 텍스트를 다음 paragraph에 합침
+    let mut pending_setext_underline: Option<String> = None;
+
+    let mut result: Vec<BlockNode> = Vec::new();
+
+    for node in children {
+        match node {
             BlockNode::Paragraph(para) => {
                 if let Some(raw) = &para.raw_text {
                     let remaining = link_ref_def::extract_definitions(raw, ref_map);
                     if remaining.trim().is_empty() {
-                        None // paragraph 전체가 link ref def
+                        if let Some(underline) = pending_setext_underline.take() {
+                            // setext underline + empty paragraph → paragraph with underline only
+                            result.push(BlockNode::Paragraph(ParagraphNode::with_raw_text(
+                                inline::parse_inlines(&underline),
+                                &underline,
+                            )));
+                        }
+                        // paragraph 전체가 link ref def → 제거
                     } else if remaining != *raw {
                         // 일부가 link ref def였으므로 남은 텍스트로 재파싱
-                        Some(BlockNode::Paragraph(ParagraphNode::with_raw_text(
-                            inline::parse_inlines(&remaining),
-                            &remaining,
-                        )))
+                        let new_raw = if let Some(underline) = pending_setext_underline.take() {
+                            format!("{}\n{}", underline, remaining)
+                        } else {
+                            remaining
+                        };
+                        result.push(BlockNode::Paragraph(ParagraphNode::with_raw_text(
+                            inline::parse_inlines(&new_raw),
+                            &new_raw,
+                        )));
+                    } else if let Some(underline) = pending_setext_underline.take() {
+                        // setext underline을 paragraph 앞에 합침
+                        let new_raw = format!("{}\n{}", underline, raw);
+                        result.push(BlockNode::Paragraph(ParagraphNode::with_raw_text(
+                            inline::parse_inlines(&new_raw),
+                            &new_raw,
+                        )));
                     } else {
-                        Some(BlockNode::Paragraph(para))
+                        result.push(BlockNode::Paragraph(para));
                     }
+                } else if let Some(underline) = pending_setext_underline.take() {
+                    // raw_text 없는 paragraph에 underline 합침 불가 → 별도 출력
+                    result.push(BlockNode::Paragraph(ParagraphNode::with_raw_text(
+                        inline::parse_inlines(&underline),
+                        &underline,
+                    )));
+                    result.push(BlockNode::Paragraph(para));
                 } else {
-                    Some(BlockNode::Paragraph(para))
+                    result.push(BlockNode::Paragraph(para));
                 }
             }
             BlockNode::Heading(heading) => {
-                if let Some(raw) = &heading.raw_text {
-                    let remaining = link_ref_def::extract_definitions(raw, ref_map);
-                    if remaining.trim().is_empty() {
-                        // ref def만 있었으면 setext underline은 paragraph가 됨
-                        // (=== 또는 --- 자체는 이미 소비되었으므로 빈 paragraph는 제거)
-                        None
-                    } else if remaining != *raw {
-                        // ref def 추출 후 남은 텍스트 → heading으로 유지
-                        Some(BlockNode::Heading(HeadingNode::with_raw_text(
-                            heading.level,
-                            inline::parse_inlines(&remaining),
-                            &remaining,
-                        )))
+                // 이전 setext underline이 있으면 먼저 flush
+                if let Some(underline) = pending_setext_underline.take() {
+                    result.push(BlockNode::Paragraph(ParagraphNode::with_raw_text(
+                        inline::parse_inlines(&underline),
+                        &underline,
+                    )));
+                }
+
+                if heading.setext_underline.is_some() {
+                    // Setext heading만 link ref def 추출 대상
+                    // (CommonMark: link ref def는 paragraph 컨텍스트에서만 추출)
+                    if let Some(raw) = &heading.raw_text {
+                        let remaining = link_ref_def::extract_definitions(raw, ref_map);
+                        if remaining.trim().is_empty() {
+                            // 내용이 모두 ref def → 밑줄을 다음 paragraph에 합침
+                            pending_setext_underline = Some(heading.setext_underline.unwrap());
+                        } else if remaining != *raw {
+                            result.push(BlockNode::Heading(HeadingNode::with_raw_text(
+                                heading.level,
+                                inline::parse_inlines(&remaining),
+                                &remaining,
+                            )));
+                        } else {
+                            result.push(BlockNode::Heading(heading));
+                        }
                     } else {
-                        Some(BlockNode::Heading(heading))
+                        result.push(BlockNode::Heading(heading));
                     }
                 } else {
-                    Some(BlockNode::Heading(heading))
+                    // ATX heading: ref def 추출 안 함, resolve_references에서 인라인 재파싱만
+                    result.push(BlockNode::Heading(heading));
                 }
             }
             BlockNode::Blockquote(mut bq) => {
+                if let Some(underline) = pending_setext_underline.take() {
+                    result.push(BlockNode::Paragraph(ParagraphNode::with_raw_text(
+                        inline::parse_inlines(&underline),
+                        &underline,
+                    )));
+                }
                 bq.children = extract_link_ref_defs(bq.children, ref_map);
-                Some(BlockNode::Blockquote(bq))
+                result.push(BlockNode::Blockquote(bq));
             }
             BlockNode::List(mut list) => {
+                if let Some(underline) = pending_setext_underline.take() {
+                    result.push(BlockNode::Paragraph(ParagraphNode::with_raw_text(
+                        inline::parse_inlines(&underline),
+                        &underline,
+                    )));
+                }
                 for item in list.children.iter_mut() {
                     item.children = extract_link_ref_defs(
                         std::mem::take(&mut item.children),
                         ref_map,
                     );
                 }
-                Some(BlockNode::List(list))
+                result.push(BlockNode::List(list));
             }
-            other => Some(other),
-        })
-        .collect()
+            other => {
+                if let Some(underline) = pending_setext_underline.take() {
+                    result.push(BlockNode::Paragraph(ParagraphNode::with_raw_text(
+                        inline::parse_inlines(&underline),
+                        &underline,
+                    )));
+                }
+                result.push(other);
+            }
+        }
+    }
+
+    // pending underline을 flush
+    if let Some(underline) = pending_setext_underline.take() {
+        result.push(BlockNode::Paragraph(ParagraphNode::with_raw_text(
+            inline::parse_inlines(&underline),
+            &underline,
+        )));
+    }
+
+    result
 }
 
 /// Pass 3: reference link/image를 해석한다.
@@ -221,8 +312,9 @@ fn resolve_references(children: Vec<BlockNode>, ref_map: &link_ref_def::RefMap) 
                 BlockNode::Paragraph(para)
             }
             BlockNode::Heading(mut h) => {
-                // heading은 raw_text가 없으므로 children에서 재귀 처리
-                // TODO: heading에도 raw_text 보존 필요
+                if let Some(raw) = &h.raw_text {
+                    h.children = inline::parse_inlines_with_refs(raw, Some(ref_map));
+                }
                 BlockNode::Heading(h)
             }
             BlockNode::Blockquote(mut bq) => {

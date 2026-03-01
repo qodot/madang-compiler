@@ -238,6 +238,8 @@ pub struct HeadingNode {
     pub children: Vec<InlineNode>,
     /// setext heading의 원본 텍스트 (ref def 추출용)
     pub raw_text: Option<String>,
+    /// setext heading의 밑줄 텍스트 (ref def 추출 후 복원용)
+    pub setext_underline: Option<String>,
 }
 
 impl PartialEq for HeadingNode {
@@ -250,11 +252,20 @@ impl Node for HeadingNode {}
 
 impl HeadingNode {
     pub fn new(level: u8, children: Vec<InlineNode>) -> Self {
-        Self { level, children, raw_text: None }
+        Self { level, children, raw_text: None, setext_underline: None }
     }
 
     pub fn with_raw_text(level: u8, children: Vec<InlineNode>, raw_text: &str) -> Self {
-        Self { level, children, raw_text: Some(raw_text.to_string()) }
+        Self { level, children, raw_text: Some(raw_text.to_string()), setext_underline: None }
+    }
+
+    pub fn setext(level: u8, children: Vec<InlineNode>, raw_text: &str, underline: &str) -> Self {
+        Self {
+            level,
+            children,
+            raw_text: Some(raw_text.to_string()),
+            setext_underline: Some(underline.to_string()),
+        }
     }
 }
 
