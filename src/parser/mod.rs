@@ -2419,3 +2419,20 @@ mod tests {
 
 
 }
+
+#[cfg(test)]
+mod codex_review_test {
+    use super::*;
+    use crate::Spec;
+    use crate::renderer::render;
+
+    #[test]
+    fn test_sublist_then_blank_then_paragraph_is_loose() {
+        // Codex review: sublist items followed by blank line + paragraph
+        let input = "- a\n  - b\n  - c\n\n  d\n";
+        let doc = parse(input, Spec::CommonMark);
+        let html = render(&doc);
+        // Should be loose (paragraph wrapping)
+        assert!(html.contains("<li>\n<p>"), "Expected loose list but got: {}", html);
+    }
+}
