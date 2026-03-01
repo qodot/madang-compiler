@@ -164,7 +164,9 @@ pub(crate) fn parse_block_simple(block: &str) -> BlockNode {
             if blocks.len() == 1 {
                 return blocks.into_iter().next().unwrap();
             }
-            // 여러 블록이면 첫 번째만 반환 (나머지는 손실되지만 실제로는 드문 경우)
+            // 여러 블록이면 wrapper 없이 첫 번째만 반환
+            // TODO: parse_block_simple → Vec<BlockNode> 반환으로 리팩토링 필요
+            // (blockquote lazy continuation에서 list + 다른 블록이 올 때 데이터 손실 가능)
             if !blocks.is_empty() {
                 return blocks.into_iter().next().unwrap();
             }
