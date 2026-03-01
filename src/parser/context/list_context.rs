@@ -78,6 +78,11 @@ impl ListContext {
                 // 다른 마커 타입 → 리스트 종료
                 return self.end_and_reprocess(line);
             }
+            // 빈 줄 이후 under-indented 줄은 리스트 종료 (같은 타입 아이템만 예외)
+            // Example 313: "    3. c"는 content_indent 미만이고 빈 줄 이후이므로 코드 블록
+            if self.pending_blank_count > 0 {
+                return self.end_and_reprocess(line);
+            }
             // 4칸 이상 들여쓰기 + first_content_indent 이상이면 text_only continuation
             // Example 303: 4칸 들여쓰기된 마커는 텍스트 전용
             if indent > 3 && indent >= first_content_indent {
@@ -196,15 +201,17 @@ fn parse_item_lines_with_blank_info(lines: &[ItemLine]) -> (Vec<BlockNode>, bool
             .map(|l| l.content.as_str())
             .collect::<Vec<_>>()
             .join("\n");
-        let doc = crate::parser::parse(&content);
-        
+        // parse_blocks를 사용: ref def를 제거하지 않으므로 tight/loose 판정이 정확함
+        // ref def 추출은 최상위 parse()에서 extract_link_ref_defs가 재귀적으로 수행
+        let blocks = crate::parser::parse_blocks(&content);
+
         // 아이템 내 **직접** 블록 사이 빈 줄 확인
         // sublist 내의 빈 줄은 제외해야 함
-        // 직접 블록: doc.children의 최상위 블록들
+        // 직접 블록: blocks의 최상위 블록들
         // 빈 줄로 분리된 직접 블록이 2개 이상인지 확인
-        let has_blank = has_direct_blank_between_blocks(lines, &doc.children);
-        
-        (doc.children, has_blank)
+        let has_blank = has_direct_blank_between_blocks(lines, &blocks);
+
+        (blocks, has_blank)
     }
 }
 

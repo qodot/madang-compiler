@@ -176,6 +176,8 @@ pub fn parse_label(input: &str) -> Option<(String, usize)> {
             b'\\' if pos + 1 < input.len() => {
                 let next = bytes[pos + 1] as char;
                 if crate::parser::inline::backslash_escape::is_ascii_punctuation(next) {
+                    // 백슬래시와 다음 문자 모두 보존 (label matching은 raw 기준)
+                    label.push('\\');
                     label.push(next);
                     pos += 2;
                 } else {

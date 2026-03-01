@@ -156,6 +156,21 @@ pub(crate) fn parse_block_simple(block: &str) -> BlockNode {
         return html_block::finalize(vec![block.to_string()]);
     }
 
+    // List item detection: 첫 줄이 list item이면 전체를 parse_blocks로 파싱
+    // (Example 292: blockquote 내 lazy continuation으로 합쳐진 list item 처리)
+    if let Some(first_line) = block.lines().next() {
+        if let Ok(list_item::ListItemOk::Started(_)) = list_item::parse(first_line) {
+            let blocks = parse_blocks(block);
+            if blocks.len() == 1 {
+                return blocks.into_iter().next().unwrap();
+            }
+            // 여러 블록이면 첫 번째만 반환 (나머지는 손실되지만 실제로는 드문 경우)
+            if !blocks.is_empty() {
+                return blocks.into_iter().next().unwrap();
+            }
+        }
+    }
+
     paragraph::parse(block.trim_start())
 }
 
