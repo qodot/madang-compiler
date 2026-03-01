@@ -226,25 +226,28 @@ fn extract_link_ref_defs(
                     )));
                 }
 
-                if let Some(raw) = &heading.raw_text {
-                    let remaining = link_ref_def::extract_definitions(raw, ref_map);
-                    if remaining.trim().is_empty() {
-                        if let Some(underline) = &heading.setext_underline {
-                            // setext heading의 내용이 모두 ref def → 밑줄을 다음 paragraph에 합침
-                            pending_setext_underline = Some(underline.clone());
+                if heading.setext_underline.is_some() {
+                    // Setext heading만 link ref def 추출 대상
+                    // (CommonMark: link ref def는 paragraph 컨텍스트에서만 추출)
+                    if let Some(raw) = &heading.raw_text {
+                        let remaining = link_ref_def::extract_definitions(raw, ref_map);
+                        if remaining.trim().is_empty() {
+                            // 내용이 모두 ref def → 밑줄을 다음 paragraph에 합침
+                            pending_setext_underline = Some(heading.setext_underline.unwrap());
+                        } else if remaining != *raw {
+                            result.push(BlockNode::Heading(HeadingNode::with_raw_text(
+                                heading.level,
+                                inline::parse_inlines(&remaining),
+                                &remaining,
+                            )));
+                        } else {
+                            result.push(BlockNode::Heading(heading));
                         }
-                        // else: ATX heading의 내용이 모두 ref def → 제거
-                    } else if remaining != *raw {
-                        // ref def 추출 후 남은 텍스트 → heading으로 유지
-                        result.push(BlockNode::Heading(HeadingNode::with_raw_text(
-                            heading.level,
-                            inline::parse_inlines(&remaining),
-                            &remaining,
-                        )));
                     } else {
                         result.push(BlockNode::Heading(heading));
                     }
                 } else {
+                    // ATX heading: ref def 추출 안 함, resolve_references에서 인라인 재파싱만
                     result.push(BlockNode::Heading(heading));
                 }
             }
