@@ -17,6 +17,7 @@ pub fn parse(text: &str) -> BlockNode {
 mod tests {
     use crate::node::{BlockNode, InlineNode};
     use crate::parser::parse;
+    use crate::Spec;
     use rstest::rstest;
 
     #[rstest]
@@ -41,7 +42,7 @@ mod tests {
     #[case("\n\nparagraph", vec![BlockNode::paragraph(vec![InlineNode::text("paragraph")])])]
     #[case("paragraph\n\n", vec![BlockNode::paragraph(vec![InlineNode::text("paragraph")])])]
     fn test_paragraph(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 }

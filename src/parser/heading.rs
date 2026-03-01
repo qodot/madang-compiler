@@ -92,6 +92,7 @@ fn strip_closing_hashes(s: &str) -> &str {
 mod tests {
     use crate::node::{BlockNode, InlineNode};
     use crate::parser::parse;
+    use crate::Spec;
     use rstest::rstest;
 
     #[rstest]
@@ -152,7 +153,7 @@ mod tests {
     #[case("## 🎉 축하합니다", vec![BlockNode::heading(2, vec![InlineNode::text("🎉 축하합니다")])])]
     #[case("#no_space", vec![BlockNode::paragraph(vec![InlineNode::text("#no_space")])])]
     fn test_heading(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 }

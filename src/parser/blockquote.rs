@@ -125,6 +125,7 @@ where
 mod tests {
     use crate::node::{BlockNode, InlineNode, ListItemNode};
     use crate::parser::parse;
+    use crate::Spec;
     use rstest::rstest;
 
     fn bq(depth: usize, inner: BlockNode) -> BlockNode {
@@ -191,7 +192,7 @@ mod tests {
     #[case("> a\nb\nc", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("a"), InlineNode::SoftBreak, InlineNode::text("b"), InlineNode::SoftBreak, InlineNode::text("c")])])])]
     #[case("> start\n> middle\nend", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("start"), InlineNode::SoftBreak, InlineNode::text("middle"), InlineNode::SoftBreak, InlineNode::text("end")])])])]
     fn test_blockquote(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -206,7 +207,7 @@ mod tests {
     #[case("> > > > 4단계", 4, "4단계")]
     #[case("> > a\n> > b", 2, "a\nb")]
     fn test_nested_blockquote(#[case] input: &str, #[case] depth: usize, #[case] text: &str) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         let inlines: Vec<InlineNode> = text.split('\n').enumerate().fold(vec![], |mut acc, (i, part)| {
             if i > 0 { acc.push(InlineNode::SoftBreak); }
             acc.push(InlineNode::text(part));
@@ -220,7 +221,7 @@ mod tests {
     #[rstest]
     #[case(">     code\n\n>    not code", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "code")]), BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("not code")])])])]
     fn test_blockquote_code(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -233,7 +234,7 @@ mod tests {
     // Example 249: 빈 blockquote 줄 후 paragraph
     #[case("> bar\n>\nbaz", vec![BlockNode::blockquote(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])]), BlockNode::paragraph(vec![InlineNode::text("baz")])])]
     fn test_blockquote_laziness(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -241,7 +242,7 @@ mod tests {
     #[rstest]
     #[case("> - foo\n- bar", vec![BlockNode::blockquote(vec![BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])])])]), BlockNode::bullet_list(true, vec![ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("bar")])])])])]
     fn test_blockquote_list_interrupt(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 

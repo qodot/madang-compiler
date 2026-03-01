@@ -31,7 +31,7 @@ type ParserState = (Vec<BlockNode>, ParsingContext);
 
 /// 탭을 spaces로 확장 (4칸 탭 스톱)
 /// 문서 전체 파싱
-pub fn parse(input: &str) -> DocumentNode {
+pub fn parse(input: &str, _spec: crate::Spec) -> DocumentNode {
     if input.is_empty() {
         return DocumentNode::new(vec![]);
     }
@@ -350,17 +350,18 @@ fn resolve_references(children: Vec<BlockNode>, ref_map: &link_ref_def::RefMap) 
 mod tests {
     use super::*;
     use crate::node::InlineNode;
+    use crate::Spec;
 
     #[test]
     fn parse_empty_string() {
-        let doc = parse("");
+        let doc = parse("", Spec::CommonMark);
         assert_eq!(doc.children.len(), 0);
     }
 
     // Example 192: basic link reference definition
     #[test]
     fn example_192() {
-        let doc = parse("[foo]: /url \"title\"\n\n[foo]");
+        let doc = parse("[foo]: /url \"title\"\n\n[foo]", Spec::CommonMark);
         println!("{:#?}", doc);
         assert_eq!(doc.children.len(), 1); // link ref def removed, only paragraph with link
         if let BlockNode::Paragraph(p) = &doc.children[0] {
@@ -375,7 +376,7 @@ mod tests {
     // Example 193: link ref def with indentation
     #[test]
     fn example_193() {
-        let doc = parse("   [foo]: \n      /url  \n           'the title'  \n\n[foo]\n");
+        let doc = parse("   [foo]: \n      /url  \n           'the title'  \n\n[foo]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -389,7 +390,7 @@ mod tests {
     // Example 194: link ref def with special chars in label
     #[test]
     fn example_194() {
-        let doc = parse("[Foo*bar\\]]:my_(url) 'title (with parens)'\n\n[Foo*bar\\]]\n");
+        let doc = parse("[Foo*bar\\]]:my_(url) 'title (with parens)'\n\n[Foo*bar\\]]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -403,7 +404,7 @@ mod tests {
     // Example 195: link ref def with angle-bracket destination
     #[test]
     fn example_195() {
-        let doc = parse("[Foo bar]:\n<my url>\n'title'\n\n[Foo bar]\n");
+        let doc = parse("[Foo bar]:\n<my url>\n'title'\n\n[Foo bar]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -417,7 +418,7 @@ mod tests {
     // Example 196: multiline title in link ref def
     #[test]
     fn example_196() {
-        let doc = parse("[foo]: /url '\ntitle\nline1\nline2\n'\n\n[foo]\n");
+        let doc = parse("[foo]: /url '\ntitle\nline1\nline2\n'\n\n[foo]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -431,7 +432,7 @@ mod tests {
     // Example 197: blank line in title → not a ref def
     #[test]
     fn example_197() {
-        let doc = parse("[foo]: /url 'title\n\nwith blank line'\n\n[foo]\n");
+        let doc = parse("[foo]: /url 'title\n\nwith blank line'\n\n[foo]\n", Spec::CommonMark);
         // Not a valid ref def, so [foo] is not resolved
         assert!(doc.children.len() >= 3);
     }
@@ -439,7 +440,7 @@ mod tests {
     // Example 198: ref def with destination on next line
     #[test]
     fn example_198() {
-        let doc = parse("[foo]:\n/url\n\n[foo]\n");
+        let doc = parse("[foo]:\n/url\n\n[foo]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -453,7 +454,7 @@ mod tests {
     // Example 199: ref def with no destination → not valid
     #[test]
     fn example_199() {
-        let doc = parse("[foo]:\n\n[foo]\n");
+        let doc = parse("[foo]:\n\n[foo]\n", Spec::CommonMark);
         // Not a valid ref def
         assert!(doc.children.len() >= 2);
     }
@@ -461,7 +462,7 @@ mod tests {
     // Example 200: ref def with empty angle-bracket destination
     #[test]
     fn example_200() {
-        let doc = parse("[foo]: <>\n\n[foo]\n");
+        let doc = parse("[foo]: <>\n\n[foo]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -475,14 +476,14 @@ mod tests {
     // Example 201: ref def with angle dest followed by parens → not valid
     #[test]
     fn example_201() {
-        let doc = parse("[foo]: <bar>(baz)\n\n[foo]\n");
+        let doc = parse("[foo]: <bar>(baz)\n\n[foo]\n", Spec::CommonMark);
         assert!(doc.children.len() >= 2);
     }
 
     // Example 202: backslash escapes in destination and title
     #[test]
     fn example_202() {
-        let doc = parse("[foo]: /url\\bar\\*baz \"foo\\\"bar\\baz\"\n\n[foo]\n");
+        let doc = parse("[foo]: /url\\bar\\*baz \"foo\\\"bar\\baz\"\n\n[foo]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -496,7 +497,7 @@ mod tests {
     // Example 203: ref def after usage
     #[test]
     fn example_203() {
-        let doc = parse("[foo]\n\n[foo]: url\n");
+        let doc = parse("[foo]\n\n[foo]: url\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -510,7 +511,7 @@ mod tests {
     // Example 204: duplicate ref def → first wins
     #[test]
     fn example_204() {
-        let doc = parse("[foo]\n\n[foo]: first\n[foo]: second\n");
+        let doc = parse("[foo]\n\n[foo]: first\n[foo]: second\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -524,7 +525,7 @@ mod tests {
     // Example 205: case-insensitive ref labels
     #[test]
     fn example_205() {
-        let doc = parse("[FOO]: /url\n\n[Foo]\n");
+        let doc = parse("[FOO]: /url\n\n[Foo]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -538,21 +539,21 @@ mod tests {
     // Example 206: unicode case folding
     #[test]
     fn example_206() {
-        let doc = parse("[ΑΓΩ]: /φου\n\n[αγω]\n");
+        let doc = parse("[ΑΓΩ]: /φου\n\n[αγω]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 207: ref def only → no output
     #[test]
     fn example_207() {
-        let doc = parse("[foo]: /url\n");
+        let doc = parse("[foo]: /url\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 0);
     }
 
     // Example 208: multiline ref label + remaining text
     #[test]
     fn example_208() {
-        let doc = parse("[\nfoo\n]: /url\nbar\n");
+        let doc = parse("[\nfoo\n]: /url\nbar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![InlineNode::text("bar")]);
@@ -564,7 +565,7 @@ mod tests {
     // Example 209: trailing content after title → not a ref def
     #[test]
     fn example_209() {
-        let doc = parse("[foo]: /url \"title\" ok\n");
+        let doc = parse("[foo]: /url \"title\" ok\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
     }
@@ -572,7 +573,7 @@ mod tests {
     // Example 210: title on next line without belonging to ref def
     #[test]
     fn example_210() {
-        let doc = parse("[foo]: /url\n\"title\" ok\n");
+        let doc = parse("[foo]: /url\n\"title\" ok\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![InlineNode::text("\"title\" ok")]);
@@ -584,7 +585,7 @@ mod tests {
     // Example 211: indented code block → not a ref def
     #[test]
     fn example_211() {
-        let doc = parse("    [foo]: /url \"title\"\n\n[foo]\n");
+        let doc = parse("    [foo]: /url \"title\"\n\n[foo]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 2);
         assert!(matches!(&doc.children[0], BlockNode::CodeBlock(_)));
         assert!(matches!(&doc.children[1], BlockNode::Paragraph(_)));
@@ -593,7 +594,7 @@ mod tests {
     // Example 212: fenced code block → not a ref def
     #[test]
     fn example_212() {
-        let doc = parse("```\n[foo]: /url\n```\n\n[foo]\n");
+        let doc = parse("```\n[foo]: /url\n```\n\n[foo]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 2);
         assert!(matches!(&doc.children[0], BlockNode::CodeBlock(_)));
         assert!(matches!(&doc.children[1], BlockNode::Paragraph(_)));
@@ -602,7 +603,7 @@ mod tests {
     // Example 213: ref def inside paragraph → not extracted
     #[test]
     fn example_213() {
-        let doc = parse("Foo\n[bar]: /baz\n\n[bar]\n");
+        let doc = parse("Foo\n[bar]: /baz\n\n[bar]\n", Spec::CommonMark);
         // [bar] should NOT be resolved since the ref def is inside a paragraph
         assert_eq!(doc.children.len(), 2);
     }
@@ -610,7 +611,7 @@ mod tests {
     // Example 214: heading + ref def + blockquote
     #[test]
     fn example_214() {
-        let doc = parse("# [Foo]\n[foo]: /url\n> bar\n");
+        let doc = parse("# [Foo]\n[foo]: /url\n> bar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 2);
         assert!(matches!(&doc.children[0], BlockNode::Heading(_)));
         assert!(matches!(&doc.children[1], BlockNode::Blockquote(_)));
@@ -619,7 +620,7 @@ mod tests {
     // Example 215: ref def + setext heading
     #[test]
     fn example_215() {
-        let doc = parse("[foo]: /url\nbar\n===\n[foo]\n");
+        let doc = parse("[foo]: /url\nbar\n===\n[foo]\n", Spec::CommonMark);
         // ref def extracted, "bar\n===" becomes setext h1, then [foo] paragraph
         assert_eq!(doc.children.len(), 2);
         assert!(matches!(&doc.children[0], BlockNode::Heading(_)));
@@ -635,7 +636,7 @@ mod tests {
     // Example 216: ref def label looks like setext underline
     #[test]
     fn example_216() {
-        let doc = parse("[foo]: /url\n===\n[foo]\n");
+        let doc = parse("[foo]: /url\n===\n[foo]\n", Spec::CommonMark);
         // "===" is not a setext heading (no preceding paragraph content)
         // so it becomes paragraph text
         assert_eq!(doc.children.len(), 1);
@@ -644,7 +645,7 @@ mod tests {
     // Example 217: multiple ref defs
     #[test]
     fn example_217() {
-        let doc = parse("[foo]: /foo-url \"foo\"\n[bar]: /bar-url\n  \"bar\"\n[baz]: /baz-url\n\n[foo],\n[bar],\n[baz]\n");
+        let doc = parse("[foo]: /foo-url \"foo\"\n[bar]: /bar-url\n  \"bar\"\n[baz]: /baz-url\n\n[foo],\n[bar],\n[baz]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // Should contain 3 links interspersed with commas and softbreaks
@@ -657,7 +658,7 @@ mod tests {
     // Example 218: ref def inside blockquote
     #[test]
     fn example_218() {
-        let doc = parse("[foo]\n\n> [foo]: /url\n");
+        let doc = parse("[foo]\n\n> [foo]: /url\n", Spec::CommonMark);
         // Spec says [foo] should resolve even though ref def is in blockquote
         assert_eq!(doc.children.len(), 2);
     }
@@ -669,7 +670,7 @@ mod tests {
     // Example 527: full reference link [foo][bar]
     #[test]
     fn example_527() {
-        let doc = parse("[foo][bar]\n\n[bar]: /url \"title\"\n");
+        let doc = parse("[foo][bar]\n\n[bar]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -683,7 +684,7 @@ mod tests {
     // Example 528: nested brackets in link text
     #[test]
     fn example_528() {
-        let doc = parse("[link [foo [bar]]][ref]\n\n[ref]: /uri\n");
+        let doc = parse("[link [foo [bar]]][ref]\n\n[ref]: /uri\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -697,7 +698,7 @@ mod tests {
     // Example 529: escaped bracket in link text
     #[test]
     fn example_529() {
-        let doc = parse("[link \\[bar][ref]\n\n[ref]: /uri\n");
+        let doc = parse("[link \\[bar][ref]\n\n[ref]: /uri\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -711,7 +712,7 @@ mod tests {
     // Example 530: inline formatting in link text
     #[test]
     fn example_530() {
-        let doc = parse("[link *foo **bar** `#`*][ref]\n\n[ref]: /uri\n");
+        let doc = parse("[link *foo **bar** `#`*][ref]\n\n[ref]: /uri\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -737,7 +738,7 @@ mod tests {
     // Example 531: image inside reference link
     #[test]
     fn example_531() {
-        let doc = parse("[![moon](moon.jpg)][ref]\n\n[ref]: /uri\n");
+        let doc = parse("[![moon](moon.jpg)][ref]\n\n[ref]: /uri\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -755,28 +756,28 @@ mod tests {
     // Example 532: link inside link text → not nested
     #[test]
     fn example_532() {
-        let doc = parse("[foo [bar](/uri)][ref]\n\n[ref]: /uri\n");
+        let doc = parse("[foo [bar](/uri)][ref]\n\n[ref]: /uri\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 533: emphasis + link inside link text
     #[test]
     fn example_533() {
-        let doc = parse("[foo *bar [baz][ref]*][ref]\n\n[ref]: /uri\n");
+        let doc = parse("[foo *bar [baz][ref]*][ref]\n\n[ref]: /uri\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 534: emphasis delimiter mismatch with ref link
     #[test]
     fn example_534() {
-        let doc = parse("*[foo*][ref]\n\n[ref]: /uri\n");
+        let doc = parse("*[foo*][ref]\n\n[ref]: /uri\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 535: unmatched emphasis around ref link
     #[test]
     fn example_535() {
-        let doc = parse("[foo *bar][ref]*\n\n[ref]: /uri\n");
+        let doc = parse("[foo *bar][ref]*\n\n[ref]: /uri\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -791,14 +792,14 @@ mod tests {
     // Example 536: raw HTML prevents ref link
     #[test]
     fn example_536() {
-        let doc = parse("[foo <bar attr=\"][ref]\">\n\n[ref]: /uri\n");
+        let doc = parse("[foo <bar attr=\"][ref]\">\n\n[ref]: /uri\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 537: code span prevents ref link
     #[test]
     fn example_537() {
-        let doc = parse("[foo`][ref]`\n\n[ref]: /uri\n");
+        let doc = parse("[foo`][ref]`\n\n[ref]: /uri\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // [foo is text, `][ref]` is code span
@@ -811,14 +812,14 @@ mod tests {
     // Example 538: autolink prevents ref link
     #[test]
     fn example_538() {
-        let doc = parse("[foo<https://example.com/?search=][ref]>\n\n[ref]: /uri\n");
+        let doc = parse("[foo<https://example.com/?search=][ref]>\n\n[ref]: /uri\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 539: case-insensitive ref label
     #[test]
     fn example_539() {
-        let doc = parse("[foo][BaR]\n\n[bar]: /url \"title\"\n");
+        let doc = parse("[foo][BaR]\n\n[bar]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -832,21 +833,21 @@ mod tests {
     // Example 540: unicode case folding in ref
     #[test]
     fn example_540() {
-        let doc = parse("[ẞ]\n\n[SS]: /url\n");
+        let doc = parse("[ẞ]\n\n[SS]: /url\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 541: multiline ref label
     #[test]
     fn example_541() {
-        let doc = parse("[Foo\n  bar]: /url\n\n[Baz][Foo bar]\n");
+        let doc = parse("[Foo\n  bar]: /url\n\n[Baz][Foo bar]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 542: space between link text and ref label → not a ref link
     #[test]
     fn example_542() {
-        let doc = parse("[foo] [bar]\n\n[bar]: /url \"title\"\n");
+        let doc = parse("[foo] [bar]\n\n[bar]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // [foo] is text, [bar] resolves as shortcut ref link
@@ -859,7 +860,7 @@ mod tests {
     // Example 543: newline between brackets → not a ref link
     #[test]
     fn example_543() {
-        let doc = parse("[foo]\n[bar]\n\n[bar]: /url \"title\"\n");
+        let doc = parse("[foo]\n[bar]\n\n[bar]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // [foo] is text, soft break, [bar] resolves
@@ -872,7 +873,7 @@ mod tests {
     // Example 544: first ref def wins
     #[test]
     fn example_544() {
-        let doc = parse("[foo]: /url1\n\n[foo]: /url2\n\n[bar][foo]\n");
+        let doc = parse("[foo]: /url1\n\n[foo]: /url2\n\n[bar][foo]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -886,7 +887,7 @@ mod tests {
     // Example 545: escaped char in ref label → no match
     #[test]
     fn example_545() {
-        let doc = parse("[bar][foo\\!]\n\n[foo!]: /url\n");
+        let doc = parse("[bar][foo\\!]\n\n[foo!]: /url\n", Spec::CommonMark);
         // Should NOT match because foo\! ≠ foo!
         assert_eq!(doc.children.len(), 1);
     }
@@ -894,7 +895,7 @@ mod tests {
     // Example 546: unclosed bracket in ref label
     #[test]
     fn example_546() {
-        let doc = parse("[foo][ref[]\n\n[ref[]: /uri\n");
+        let doc = parse("[foo][ref[]\n\n[ref[]: /uri\n", Spec::CommonMark);
         // Not valid ref links
         assert!(doc.children.len() >= 2);
     }
@@ -902,21 +903,21 @@ mod tests {
     // Example 547: nested brackets in ref label
     #[test]
     fn example_547() {
-        let doc = parse("[foo][ref[bar]]\n\n[ref[bar]]: /uri\n");
+        let doc = parse("[foo][ref[bar]]\n\n[ref[bar]]: /uri\n", Spec::CommonMark);
         assert!(doc.children.len() >= 2);
     }
 
     // Example 548: triple nested brackets
     #[test]
     fn example_548() {
-        let doc = parse("[[[foo]]]\n\n[[[foo]]]: /url\n");
+        let doc = parse("[[[foo]]]\n\n[[[foo]]]: /url\n", Spec::CommonMark);
         assert!(doc.children.len() >= 2);
     }
 
     // Example 549: escaped bracket in ref label
     #[test]
     fn example_549() {
-        let doc = parse("[foo][ref\\[]\n\n[ref\\[]: /uri\n");
+        let doc = parse("[foo][ref\\[]\n\n[ref\\[]: /uri\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -930,7 +931,7 @@ mod tests {
     // Example 550: escaped backslash in ref label
     #[test]
     fn example_550() {
-        let doc = parse("[bar\\\\]: /uri\n\n[bar\\\\]\n");
+        let doc = parse("[bar\\\\]: /uri\n\n[bar\\\\]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -944,21 +945,21 @@ mod tests {
     // Example 551: empty ref label
     #[test]
     fn example_551() {
-        let doc = parse("[]\n\n[]: /uri\n");
+        let doc = parse("[]\n\n[]: /uri\n", Spec::CommonMark);
         assert!(doc.children.len() >= 2);
     }
 
     // Example 552: blank ref label
     #[test]
     fn example_552() {
-        let doc = parse("[\n ]\n\n[\n ]: /uri\n");
+        let doc = parse("[\n ]\n\n[\n ]: /uri\n", Spec::CommonMark);
         assert!(doc.children.len() >= 2);
     }
 
     // Example 553: collapsed reference link [foo][]
     #[test]
     fn example_553() {
-        let doc = parse("[foo][]\n\n[foo]: /url \"title\"\n");
+        let doc = parse("[foo][]\n\n[foo]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -972,14 +973,14 @@ mod tests {
     // Example 554: collapsed ref with inline formatting
     #[test]
     fn example_554() {
-        let doc = parse("[*foo* bar][]\n\n[*foo* bar]: /url \"title\"\n");
+        let doc = parse("[*foo* bar][]\n\n[*foo* bar]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 555: collapsed ref case-insensitive
     #[test]
     fn example_555() {
-        let doc = parse("[Foo][]\n\n[foo]: /url \"title\"\n");
+        let doc = parse("[Foo][]\n\n[foo]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -993,14 +994,14 @@ mod tests {
     // Example 556: space between ] and [] → shortcut, not collapsed
     #[test]
     fn example_556() {
-        let doc = parse("[foo] \n[]\n\n[foo]: /url \"title\"\n");
+        let doc = parse("[foo] \n[]\n\n[foo]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 557: shortcut reference link [foo]
     #[test]
     fn example_557() {
-        let doc = parse("[foo]\n\n[foo]: /url \"title\"\n");
+        let doc = parse("[foo]\n\n[foo]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1014,21 +1015,21 @@ mod tests {
     // Example 558: shortcut ref with inline formatting
     #[test]
     fn example_558() {
-        let doc = parse("[*foo* bar]\n\n[*foo* bar]: /url \"title\"\n");
+        let doc = parse("[*foo* bar]\n\n[*foo* bar]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 559: double bracket [[*foo* bar]]
     #[test]
     fn example_559() {
-        let doc = parse("[[*foo* bar]]\n\n[*foo* bar]: /url \"title\"\n");
+        let doc = parse("[[*foo* bar]]\n\n[*foo* bar]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 560: [[bar [foo]
     #[test]
     fn example_560() {
-        let doc = parse("[[bar [foo]\n\n[foo]: /url\n");
+        let doc = parse("[[bar [foo]\n\n[foo]: /url\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // [[bar then [foo] link
@@ -1041,7 +1042,7 @@ mod tests {
     // Example 561: shortcut ref case-insensitive
     #[test]
     fn example_561() {
-        let doc = parse("[Foo]\n\n[foo]: /url \"title\"\n");
+        let doc = parse("[Foo]\n\n[foo]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1055,7 +1056,7 @@ mod tests {
     // Example 562: shortcut ref followed by text
     #[test]
     fn example_562() {
-        let doc = parse("[foo] bar\n\n[foo]: /url\n");
+        let doc = parse("[foo] bar\n\n[foo]: /url\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1070,7 +1071,7 @@ mod tests {
     // Example 563: escaped [ → not a ref link
     #[test]
     fn example_563() {
-        let doc = parse("\\[foo]\n\n[foo]: /url \"title\"\n");
+        let doc = parse("\\[foo]\n\n[foo]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![InlineNode::text("[foo]")]);
@@ -1082,14 +1083,14 @@ mod tests {
     // Example 564: shortcut ref with * in label
     #[test]
     fn example_564() {
-        let doc = parse("[foo*]: /url\n\n*[foo*]\n");
+        let doc = parse("[foo*]: /url\n\n*[foo*]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 565: full ref link takes precedence
     #[test]
     fn example_565() {
-        let doc = parse("[foo][bar]\n\n[foo]: /url1\n[bar]: /url2\n");
+        let doc = parse("[foo][bar]\n\n[foo]: /url1\n[bar]: /url2\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1103,7 +1104,7 @@ mod tests {
     // Example 566: collapsed ref [foo][]
     #[test]
     fn example_566() {
-        let doc = parse("[foo][]\n\n[foo]: /url1\n");
+        let doc = parse("[foo][]\n\n[foo]: /url1\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1117,7 +1118,7 @@ mod tests {
     // Example 567: inline link takes precedence over ref
     #[test]
     fn example_567() {
-        let doc = parse("[foo]()\n\n[foo]: /url1\n");
+        let doc = parse("[foo]()\n\n[foo]: /url1\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1131,7 +1132,7 @@ mod tests {
     // Example 568: failed inline link → falls back to ref
     #[test]
     fn example_568() {
-        let doc = parse("[foo](not a link)\n\n[foo]: /url1\n");
+        let doc = parse("[foo](not a link)\n\n[foo]: /url1\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1146,21 +1147,21 @@ mod tests {
     // Example 569: [foo][bar][baz] with only [baz] defined
     #[test]
     fn example_569() {
-        let doc = parse("[foo][bar][baz]\n\n[baz]: /url\n");
+        let doc = parse("[foo][bar][baz]\n\n[baz]: /url\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 570: [foo][bar][baz] with both defined
     #[test]
     fn example_570() {
-        let doc = parse("[foo][bar][baz]\n\n[baz]: /url1\n[bar]: /url2\n");
+        let doc = parse("[foo][bar][baz]\n\n[baz]: /url1\n[bar]: /url2\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 571: [foo][bar][baz] with [baz] and [foo] defined
     #[test]
     fn example_571() {
-        let doc = parse("[foo][bar][baz]\n\n[baz]: /url1\n[foo]: /url2\n");
+        let doc = parse("[foo][bar][baz]\n\n[baz]: /url1\n[foo]: /url2\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
@@ -1171,7 +1172,7 @@ mod tests {
     // Example 573: reference image
     #[test]
     fn example_573() {
-        let doc = parse("![foo *bar*]\n\n[foo *bar*]: train.jpg \"train & tracks\"\n");
+        let doc = parse("![foo *bar*]\n\n[foo *bar*]: train.jpg \"train & tracks\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1189,7 +1190,7 @@ mod tests {
     // Example 576: collapsed reference image ![foo *bar*][]
     #[test]
     fn example_576() {
-        let doc = parse("![foo *bar*][]\n\n[foo *bar*]: train.jpg \"train & tracks\"\n");
+        let doc = parse("![foo *bar*][]\n\n[foo *bar*]: train.jpg \"train & tracks\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1207,7 +1208,7 @@ mod tests {
     // Example 577: reference image with different label
     #[test]
     fn example_577() {
-        let doc = parse("![foo *bar*][foobar]\n\n[FOOBAR]: train.jpg \"train & tracks\"\n");
+        let doc = parse("![foo *bar*][foobar]\n\n[FOOBAR]: train.jpg \"train & tracks\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1225,7 +1226,7 @@ mod tests {
     // Example 582: reference image ![foo][bar]
     #[test]
     fn example_582() {
-        let doc = parse("![foo][bar]\n\n[bar]: /url\n");
+        let doc = parse("![foo][bar]\n\n[bar]: /url\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1239,7 +1240,7 @@ mod tests {
     // Example 583: reference image case-insensitive
     #[test]
     fn example_583() {
-        let doc = parse("![foo][bar]\n\n[BAR]: /url\n");
+        let doc = parse("![foo][bar]\n\n[BAR]: /url\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1253,7 +1254,7 @@ mod tests {
     // Example 584: collapsed reference image ![foo][]
     #[test]
     fn example_584() {
-        let doc = parse("![foo][]\n\n[foo]: /url \"title\"\n");
+        let doc = parse("![foo][]\n\n[foo]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1267,14 +1268,14 @@ mod tests {
     // Example 585: collapsed ref image with formatting
     #[test]
     fn example_585() {
-        let doc = parse("![*foo* bar][]\n\n[*foo* bar]: /url \"title\"\n");
+        let doc = parse("![*foo* bar][]\n\n[*foo* bar]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 586: collapsed ref image case-insensitive
     #[test]
     fn example_586() {
-        let doc = parse("![Foo][]\n\n[foo]: /url \"title\"\n");
+        let doc = parse("![Foo][]\n\n[foo]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1288,14 +1289,14 @@ mod tests {
     // Example 587: space before [] → shortcut, not collapsed
     #[test]
     fn example_587() {
-        let doc = parse("![foo] \n[]\n\n[foo]: /url \"title\"\n");
+        let doc = parse("![foo] \n[]\n\n[foo]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 588: shortcut reference image ![foo]
     #[test]
     fn example_588() {
-        let doc = parse("![foo]\n\n[foo]: /url \"title\"\n");
+        let doc = parse("![foo]\n\n[foo]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1309,14 +1310,14 @@ mod tests {
     // Example 589: shortcut ref image with formatting
     #[test]
     fn example_589() {
-        let doc = parse("![*foo* bar]\n\n[*foo* bar]: /url \"title\"\n");
+        let doc = parse("![*foo* bar]\n\n[*foo* bar]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 591: shortcut ref image case-insensitive
     #[test]
     fn example_591() {
-        let doc = parse("![Foo]\n\n[foo]: /url \"title\"\n");
+        let doc = parse("![Foo]\n\n[foo]: /url \"title\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -1330,7 +1331,7 @@ mod tests {
     // Example 57: list → thematic break → list
     #[test]
     fn example_57() {
-        let doc = parse("- foo\n***\n- bar\n");
+        let doc = parse("- foo\n***\n- bar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 3);
         assert!(matches!(&doc.children[0], BlockNode::List(_)));
         assert!(matches!(&doc.children[1], BlockNode::ThematicBreak(_)));
@@ -1340,7 +1341,7 @@ mod tests {
     // Example 58: paragraph → thematic break → paragraph
     #[test]
     fn example_58() {
-        let doc = parse("Foo\n***\nbar\n");
+        let doc = parse("Foo\n***\nbar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 3);
         assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
         assert!(matches!(&doc.children[1], BlockNode::ThematicBreak(_)));
@@ -1350,7 +1351,7 @@ mod tests {
     // Example 59: setext heading (Foo + ---) → paragraph
     #[test]
     fn example_59() {
-        let doc = parse("Foo\n---\nbar\n");
+        let doc = parse("Foo\n---\nbar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 2);
         assert!(matches!(&doc.children[0], BlockNode::Heading(_)));
         assert!(matches!(&doc.children[1], BlockNode::Paragraph(_)));
@@ -1359,7 +1360,7 @@ mod tests {
     // Example 60: * list → thematic break (* * *) → * list
     #[test]
     fn example_60() {
-        let doc = parse("* Foo\n* * *\n* Bar\n");
+        let doc = parse("* Foo\n* * *\n* Bar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 3);
         assert!(matches!(&doc.children[0], BlockNode::List(_)));
         assert!(matches!(&doc.children[1], BlockNode::ThematicBreak(_)));
@@ -1369,7 +1370,7 @@ mod tests {
     // Example 65: escaped # → not a heading
     #[test]
     fn example_65() {
-        let doc = parse("\\## foo\n");
+        let doc = parse("\\## foo\n", Spec::CommonMark);
         println!("{:#?}", doc);
         assert_eq!(doc.children.len(), 1);
         assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
@@ -1378,7 +1379,7 @@ mod tests {
     // Example 66: heading with emphasis and escaped *
     #[test]
     fn example_66() {
-        let doc = parse("# foo *bar* \\*baz\\*\n");
+        let doc = parse("# foo *bar* \\*baz\\*\n", Spec::CommonMark);
         println!("{:#?}", doc);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Heading(h) = &doc.children[0] {
@@ -1393,7 +1394,7 @@ mod tests {
     // Example 99: list followed by --- → list + thematic break (not setext)
     #[test]
     fn example_99() {
-        let doc = parse("- foo\n-----\n");
+        let doc = parse("- foo\n-----\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 2);
         assert!(matches!(&doc.children[0], BlockNode::List(_)));
         assert!(matches!(&doc.children[1], BlockNode::ThematicBreak(_)));
@@ -1402,7 +1403,7 @@ mod tests {
     // Example 103: blank line prevents setext
     #[test]
     fn example_103() {
-        let doc = parse("Foo\n\nbar\n---\nbaz\n");
+        let doc = parse("Foo\n\nbar\n---\nbaz\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 3);
         assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
         assert!(matches!(&doc.children[1], BlockNode::Heading(_)));
@@ -1412,7 +1413,7 @@ mod tests {
     // Example 104: multiline paragraph + thematic break
     #[test]
     fn example_104() {
-        let doc = parse("Foo\nbar\n\n---\n\nbaz\n");
+        let doc = parse("Foo\nbar\n\n---\n\nbaz\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 3);
         assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
         assert!(matches!(&doc.children[1], BlockNode::ThematicBreak(_)));
@@ -1422,7 +1423,7 @@ mod tests {
     // Example 105: paragraph + thematic break (* * *) + paragraph
     #[test]
     fn example_105() {
-        let doc = parse("Foo\nbar\n* * *\nbaz\n");
+        let doc = parse("Foo\nbar\n* * *\nbaz\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 3);
         assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
         assert!(matches!(&doc.children[1], BlockNode::ThematicBreak(_)));
@@ -1432,7 +1433,7 @@ mod tests {
     // Example 106: escaped --- in paragraph continuation
     #[test]
     fn example_106() {
-        let doc = parse("Foo\nbar\n\\---\nbaz\n");
+        let doc = parse("Foo\nbar\n\\---\nbaz\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
     }
@@ -1440,7 +1441,7 @@ mod tests {
     // Example 76: escaped # in closing sequence
     #[test]
     fn example_76() {
-        let doc = parse("### foo \\###\n## foo #\\##\n# foo \\#\n");
+        let doc = parse("### foo \\###\n## foo #\\##\n# foo \\#\n", Spec::CommonMark);
         println!("{:#?}", doc);
         assert_eq!(doc.children.len(), 3);
         if let BlockNode::Heading(h) = &doc.children[0] {
@@ -1458,7 +1459,7 @@ mod tests {
     // Example 61: thematic break inside list item
     #[test]
     fn example_61() {
-        let doc = parse("- Foo\n- * * *\n");
+        let doc = parse("- Foo\n- * * *\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 2);
@@ -1471,7 +1472,7 @@ mod tests {
     // Example 16: backslash escape → hard break
     #[test]
     fn example_16() {
-        let doc = parse("foo\\\nbar\n");
+        let doc = parse("foo\\\nbar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert!(p.children.iter().any(|c| matches!(c, InlineNode::HardBreak)));
@@ -1483,7 +1484,7 @@ mod tests {
     // Example 18: indented code block (escapes not processed)
     #[test]
     fn example_18() {
-        let doc = parse("    \\[\\]\n");
+        let doc = parse("    \\[\\]\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
             assert_eq!(cb.content, "\\[\\]");
@@ -1495,7 +1496,7 @@ mod tests {
     // Example 19: fenced code block
     #[test]
     fn example_19() {
-        let doc = parse("~~~\n\\[\\]\n~~~\n");
+        let doc = parse("~~~\n\\[\\]\n~~~\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
             assert_eq!(cb.content, "\\[\\]");
@@ -1507,7 +1508,7 @@ mod tests {
     // Example 24: fenced code with info string
     #[test]
     fn example_24() {
-        let doc = parse("``` foo\\+bar\nfoo\n```\n");
+        let doc = parse("``` foo\\+bar\nfoo\n```\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
             assert_eq!(cb.info.as_deref(), Some("foo+bar"));
@@ -1520,7 +1521,7 @@ mod tests {
     // Example 327: code span + text
     #[test]
     fn example_327() {
-        let doc = parse("`hi`lo`\n");
+        let doc = parse("`hi`lo`\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert!(p.children.iter().any(|c| matches!(c, InlineNode::CodeSpan(_))));
@@ -1532,7 +1533,7 @@ mod tests {
     // Example 612: plain text (no autolink without angle brackets)
     #[test]
     fn example_612() {
-        let doc = parse("foo@bar.example.com\n");
+        let doc = parse("foo@bar.example.com\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // Should NOT be an autolink
@@ -1545,7 +1546,7 @@ mod tests {
     // Example 638: emphasis with hard break inside
     #[test]
     fn example_638() {
-        let doc = parse("*foo  \nbar*\n");
+        let doc = parse("*foo  \nbar*\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert!(p.children.iter().any(|c| matches!(c, InlineNode::Emphasis(_))));
@@ -1557,7 +1558,7 @@ mod tests {
     // Example 639: emphasis with backslash hard break inside
     #[test]
     fn example_639() {
-        let doc = parse("*foo\\\nbar*\n");
+        let doc = parse("*foo\\\nbar*\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert!(p.children.iter().any(|c| matches!(c, InlineNode::Emphasis(_))));
@@ -1569,7 +1570,7 @@ mod tests {
     // Example 646: heading with trailing backslash
     #[test]
     fn example_646() {
-        let doc = parse("### foo\\\n");
+        let doc = parse("### foo\\\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         assert!(matches!(&doc.children[0], BlockNode::Heading(_)));
     }
@@ -1577,7 +1578,7 @@ mod tests {
     // Example 647: heading with trailing spaces stripped
     #[test]
     fn example_647() {
-        let doc = parse("### foo  \n");
+        let doc = parse("### foo  \n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Heading(h) = &doc.children[0] {
             assert_eq!(h.level, 3);
@@ -1589,7 +1590,7 @@ mod tests {
     // Example 650: paragraph with punctuation
     #[test]
     fn example_650() {
-        let doc = parse("hello $.;'there\n");
+        let doc = parse("hello $.;'there\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
     }
@@ -1597,7 +1598,7 @@ mod tests {
     // Example 651: paragraph with unicode text
     #[test]
     fn example_651() {
-        let doc = parse("Foo χρῆν\n");
+        let doc = parse("Foo χρῆν\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
     }
@@ -1605,7 +1606,7 @@ mod tests {
     // Example 652: paragraph preserving multiple spaces
     #[test]
     fn example_652() {
-        let doc = parse("Multiple     spaces\n");
+        let doc = parse("Multiple     spaces\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         assert!(matches!(&doc.children[0], BlockNode::Paragraph(_)));
     }
@@ -1613,7 +1614,7 @@ mod tests {
     // Example 286: list item with 1 space indent, containing paragraph + code + blockquote
     #[test]
     fn example_286() {
-        let doc = parse(" 1.  A paragraph\n     with two lines.\n\n         indented code\n\n     > A block quote.\n");
+        let doc = parse(" 1.  A paragraph\n     with two lines.\n\n         indented code\n\n     > A block quote.\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 1);
@@ -1631,7 +1632,7 @@ mod tests {
     // Example 287: list item with 2 space indent, containing paragraph + code + blockquote
     #[test]
     fn example_287() {
-        let doc = parse("  1.  A paragraph\n      with two lines.\n\n          indented code\n\n      > A block quote.\n");
+        let doc = parse("  1.  A paragraph\n      with two lines.\n\n          indented code\n\n      > A block quote.\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 1);
@@ -1648,7 +1649,7 @@ mod tests {
     // Example 288: list item with 3 space indent, containing paragraph + code + blockquote
     #[test]
     fn example_288() {
-        let doc = parse("   1.  A paragraph\n       with two lines.\n\n           indented code\n\n       > A block quote.\n");
+        let doc = parse("   1.  A paragraph\n       with two lines.\n\n           indented code\n\n       > A block quote.\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 1);
@@ -1665,7 +1666,7 @@ mod tests {
     // Example 289: 4 space indent → indented code block, not a list
     #[test]
     fn example_289() {
-        let doc = parse("    1.  A paragraph\n        with two lines.\n\n            indented code\n\n        > A block quote.\n");
+        let doc = parse("    1.  A paragraph\n        with two lines.\n\n            indented code\n\n        > A block quote.\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         assert!(matches!(&doc.children[0], BlockNode::CodeBlock(_)));
     }
@@ -1673,7 +1674,7 @@ mod tests {
     // Example 290: 2 space indent list item with paragraph, indented code, and block quote
     #[test]
     fn example_290() {
-        let doc = parse("  1.  A paragraph\nwith two lines.\n\n          indented code\n\n      > A block quote.\n");
+        let doc = parse("  1.  A paragraph\nwith two lines.\n\n          indented code\n\n      > A block quote.\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 1);
@@ -1690,7 +1691,7 @@ mod tests {
     // Example 291: partial indent continuation → tight list with one item
     #[test]
     fn example_291() {
-        let doc = parse("  1.  A paragraph\n    with two lines.\n");
+        let doc = parse("  1.  A paragraph\n    with two lines.\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 1);
@@ -1703,7 +1704,7 @@ mod tests {
     // Example 292: blockquote > ordered list > blockquote (lazy continuation)
     #[test]
     fn example_292() {
-        let doc = parse("> 1. > Blockquote\ncontinued here.\n");
+        let doc = parse("> 1. > Blockquote\ncontinued here.\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         assert!(matches!(&doc.children[0], BlockNode::Blockquote(_)));
     }
@@ -1711,7 +1712,7 @@ mod tests {
     // Example 293: blockquote > ordered list > blockquote (non-lazy continuation)
     #[test]
     fn example_293() {
-        let doc = parse("> 1. > Blockquote\n> continued here.\n");
+        let doc = parse("> 1. > Blockquote\n> continued here.\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         assert!(matches!(&doc.children[0], BlockNode::Blockquote(_)));
     }
@@ -1719,7 +1720,7 @@ mod tests {
     // Example 294: nested bullet lists (foo > bar > baz > boo)
     #[test]
     fn example_294() {
-        let doc = parse("- foo\n  - bar\n    - baz\n      - boo\n");
+        let doc = parse("- foo\n  - bar\n    - baz\n      - boo\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 1);
@@ -1733,7 +1734,7 @@ mod tests {
     // Example 295: insufficient indent → all items in same list
     #[test]
     fn example_295() {
-        let doc = parse("- foo\n - bar\n  - baz\n   - boo\n");
+        let doc = parse("- foo\n - bar\n  - baz\n   - boo\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 4);
@@ -1745,7 +1746,7 @@ mod tests {
     // Example 296: ordered list with sub bullet (10) foo + indented - bar)
     #[test]
     fn example_296() {
-        let doc = parse("10) foo\n    - bar\n");
+        let doc = parse("10) foo\n    - bar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.start, 10);
@@ -1760,7 +1761,7 @@ mod tests {
     // Example 297: ordered list + separate bullet list (insufficient indent)
     #[test]
     fn example_297() {
-        let doc = parse("10) foo\n   - bar\n");
+        let doc = parse("10) foo\n   - bar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 2);
         assert!(matches!(&doc.children[0], BlockNode::List(_)));
         assert!(matches!(&doc.children[1], BlockNode::List(_)));
@@ -1769,7 +1770,7 @@ mod tests {
     // Example 298: nested bullet list (- - foo)
     #[test]
     fn example_298() {
-        let doc = parse("- - foo\n");
+        let doc = parse("- - foo\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 1);
@@ -1783,7 +1784,7 @@ mod tests {
     // Example 299: deeply nested mixed lists (1. - 2. foo)
     #[test]
     fn example_299() {
-        let doc = parse("1. - 2. foo\n");
+        let doc = parse("1. - 2. foo\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 1);
@@ -1795,7 +1796,7 @@ mod tests {
     // Example 300: list items with heading and setext heading
     #[test]
     fn example_300() {
-        let doc = parse("- # Foo\n- Bar\n  ---\n  baz\n");
+        let doc = parse("- # Foo\n- Bar\n  ---\n  baz\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 2);
@@ -1811,7 +1812,7 @@ mod tests {
     // Example 25: named entity references
     #[test]
     fn example_25() {
-        let doc = parse("&nbsp; &amp; &copy; &AElig; &Dcaron;\n&frac34; &HilbertSpace; &DifferentialD;\n&ClockwiseContourIntegral; &ngE;\n");
+        let doc = parse("&nbsp; &amp; &copy; &AElig; &Dcaron;\n&frac34; &HilbertSpace; &DifferentialD;\n&ClockwiseContourIntegral; &ngE;\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             let text = get_all_text(&p.children);
@@ -1830,7 +1831,7 @@ mod tests {
     // Example 26: numeric decimal character references
     #[test]
     fn example_26() {
-        let doc = parse("&#35; &#1234; &#992; &#0;\n");
+        let doc = parse("&#35; &#1234; &#992; &#0;\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             let text = get_all_text(&p.children);
@@ -1846,7 +1847,7 @@ mod tests {
     // Example 27: numeric hex character references
     #[test]
     fn example_27() {
-        let doc = parse("&#X22; &#XD06; &#xcab;\n");
+        let doc = parse("&#X22; &#XD06; &#xcab;\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             let text = get_all_text(&p.children);
@@ -1861,7 +1862,7 @@ mod tests {
     // Example 28: invalid entity references remain as literal text
     #[test]
     fn example_28() {
-        let doc = parse("&nbsp &x; &#; &#x;\n&#87654321;\n&#abcdef0;\n&ThisIsNotDefined; &hi?;\n");
+        let doc = parse("&nbsp &x; &#; &#x;\n&#87654321;\n&#abcdef0;\n&ThisIsNotDefined; &hi?;\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             let text = get_all_text(&p.children);
@@ -1881,7 +1882,7 @@ mod tests {
     // Example 29: entity without semicolon not recognized
     #[test]
     fn example_29() {
-        let doc = parse("&copy\n");
+        let doc = parse("&copy\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             let text = get_all_text(&p.children);
@@ -1894,7 +1895,7 @@ mod tests {
     // Example 30: unknown entity not recognized
     #[test]
     fn example_30() {
-        let doc = parse("&MadeUpEntity;\n");
+        let doc = parse("&MadeUpEntity;\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             let text = get_all_text(&p.children);
@@ -1907,7 +1908,7 @@ mod tests {
     // Example 31: entity in raw HTML (not processed by inline parser, passed through)
     #[test]
     fn example_31() {
-        let doc = parse("<a href=\"&ouml;&ouml;.html\">\n");
+        let doc = parse("<a href=\"&ouml;&ouml;.html\">\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         // This should be an HTML block or paragraph with raw HTML
         // The entities inside raw HTML are not processed by the markdown parser
@@ -1916,7 +1917,7 @@ mod tests {
     // Example 32: entity in inline link destination and title
     #[test]
     fn example_32() {
-        let doc = parse("[foo](/f&ouml;&ouml; \"f&ouml;&ouml;\")\n");
+        let doc = parse("[foo](/f&ouml;&ouml; \"f&ouml;&ouml;\")\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             if let InlineNode::Link(link) = &p.children[0] {
@@ -1933,14 +1934,14 @@ mod tests {
     // Example 33: entity in reference link definition
     #[test]
     fn example_33() {
-        let doc = parse("[foo]\n\n[foo]: /f&ouml;&ouml; \"f&ouml;&ouml;\"\n");
+        let doc = parse("[foo]\n\n[foo]: /f&ouml;&ouml; \"f&ouml;&ouml;\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
     }
 
     // Example 34: entity in fenced code info string
     #[test]
     fn example_34() {
-        let doc = parse("``` f&ouml;&ouml;\nfoo\n```\n");
+        let doc = parse("``` f&ouml;&ouml;\nfoo\n```\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
             assert_eq!(cb.info.as_deref(), Some("föö"));
@@ -1952,7 +1953,7 @@ mod tests {
     // Example 35: entities NOT processed in code spans
     #[test]
     fn example_35() {
-        let doc = parse("`f&ouml;&ouml;`\n");
+        let doc = parse("`f&ouml;&ouml;`\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             if let InlineNode::CodeSpan(cs) = &p.children[0] {
@@ -1968,7 +1969,7 @@ mod tests {
     // Example 36: entities NOT processed in indented code blocks
     #[test]
     fn example_36() {
-        let doc = parse("    f&ouml;f&ouml;\n");
+        let doc = parse("    f&ouml;f&ouml;\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
             assert_eq!(cb.content, "f&ouml;f&ouml;");
@@ -1980,7 +1981,7 @@ mod tests {
     // Example 37: entity-produced chars don't trigger markdown syntax
     #[test]
     fn example_37() {
-        let doc = parse("&#42;foo&#42;\n*foo*\n");
+        let doc = parse("&#42;foo&#42;\n*foo*\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // &#42; → * but should NOT be emphasis
@@ -1998,7 +1999,7 @@ mod tests {
     // Example 38: entity-produced chars don't trigger block syntax
     #[test]
     fn example_38() {
-        let doc = parse("&#42; foo\n\n* foo\n");
+        let doc = parse("&#42; foo\n\n* foo\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 2);
         // First: paragraph with "* foo" (entity-produced * is not list marker)
         if let BlockNode::Paragraph(p) = &doc.children[0] {
@@ -2015,7 +2016,7 @@ mod tests {
     // Example 39: numeric entity for newline doesn't create hard break
     #[test]
     fn example_39() {
-        let doc = parse("foo&#10;&#10;bar\n");
+        let doc = parse("foo&#10;&#10;bar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // &#10; → newline char, but as text not as line break
@@ -2030,7 +2031,7 @@ mod tests {
     // Example 40: numeric entity for tab
     #[test]
     fn example_40() {
-        let doc = parse("&#9;foo\n");
+        let doc = parse("&#9;foo\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             let text = get_all_text(&p.children);
@@ -2044,7 +2045,7 @@ mod tests {
     // Example 41: entity in inline link title is literal (not processed as title delimiter)
     #[test]
     fn example_41() {
-        let doc = parse("[a](url &quot;tit&quot;)\n");
+        let doc = parse("[a](url &quot;tit&quot;)\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // &quot; should not act as title delimiter — this is not a valid link
@@ -2057,10 +2058,10 @@ mod tests {
     // === Tab Examples (1-11) ===
 
     // Example 1: tab as indentation → indented code block
-    // 탭은 parse() 진입 시 spaces로 확장됨
+    // 탭은 parse(, Spec::CommonMark) 진입 시 spaces로 확장됨
     #[test]
     fn example_1() {
-        let doc = parse("\tfoo\tbaz\t\tbim\n");
+        let doc = parse("\tfoo\tbaz\t\tbim\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
             // \t at col 0→4sp, content: foo + \t at col 7→1sp + baz + \t at col 11→1sp + \t at col 12→4sp + bim
@@ -2073,7 +2074,7 @@ mod tests {
     // Example 2: mixed spaces+tab as indentation → indented code block
     #[test]
     fn example_2() {
-        let doc = parse("  \tfoo\tbaz\t\tbim\n");
+        let doc = parse("  \tfoo\tbaz\t\tbim\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
             assert_eq!(cb.content, "foo\tbaz\t\tbim");
@@ -2085,7 +2086,7 @@ mod tests {
     // Example 3: tab in code block content (tabs expanded to spaces)
     #[test]
     fn example_3() {
-        let doc = parse("    a\ta\n    ὐ\ta\n");
+        let doc = parse("    a\ta\n    ὐ\ta\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
             // col 4: a, col 5: \t→3sp (to col 8), a
@@ -2099,7 +2100,7 @@ mod tests {
     // Example 4: tab as list item continuation indent
     #[test]
     fn example_4() {
-        let doc = parse("  - foo\n\n\tbar\n");
+        let doc = parse("  - foo\n\n\tbar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 1);
@@ -2113,7 +2114,7 @@ mod tests {
     // Example 5: tab as list item continuation with code block
     #[test]
     fn example_5() {
-        let doc = parse("- foo\n\n\t\tbar\n");
+        let doc = parse("- foo\n\n\t\tbar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert_eq!(list.children.len(), 1);
@@ -2128,7 +2129,7 @@ mod tests {
     // Example 6: tab in blockquote → code block
     #[test]
     fn example_6() {
-        let doc = parse(">\t\tfoo\n");
+        let doc = parse(">\t\tfoo\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Blockquote(bq) = &doc.children[0] {
             assert!(bq.children.iter().any(|c| matches!(c, BlockNode::CodeBlock(_))));
@@ -2140,7 +2141,7 @@ mod tests {
     // Example 7: tab in list item → code block
     #[test]
     fn example_7() {
-        let doc = parse("-\t\tfoo\n");
+        let doc = parse("-\t\tfoo\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::List(list) = &doc.children[0] {
             assert!(list.children[0].children.iter().any(|c| matches!(c, BlockNode::CodeBlock(_))));
@@ -2152,7 +2153,7 @@ mod tests {
     // Example 8: tab as indented code block continuation
     #[test]
     fn example_8() {
-        let doc = parse("    foo\n\tbar\n");
+        let doc = parse("    foo\n\tbar\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::CodeBlock(cb) = &doc.children[0] {
             assert_eq!(cb.content, "foo\nbar");
@@ -2164,7 +2165,7 @@ mod tests {
     // Example 9: tab as nested list indent
     #[test]
     fn example_9() {
-        let doc = parse(" - foo\n   - bar\n\t - baz\n");
+        let doc = parse(" - foo\n   - bar\n\t - baz\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         // nested list: foo > bar > baz
         if let BlockNode::List(list) = &doc.children[0] {
@@ -2177,7 +2178,7 @@ mod tests {
     // Example 10: tab after # in ATX heading
     #[test]
     fn example_10() {
-        let doc = parse("#\tFoo\n");
+        let doc = parse("#\tFoo\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         assert_eq!(doc.children[0], BlockNode::heading(1, vec![InlineNode::text("Foo")]));
     }
@@ -2185,7 +2186,7 @@ mod tests {
     // Example 11: tabs in thematic break
     #[test]
     fn example_11() {
-        let doc = parse("*\t*\t*\t\n");
+        let doc = parse("*\t*\t*\t\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         assert!(matches!(doc.children[0], BlockNode::ThematicBreak(_)));
     }
@@ -2193,7 +2194,7 @@ mod tests {
     // Example 20: backslash escapes not processed in autolinks
     #[test]
     fn example_20() {
-        let doc = parse("<https://example.com?find=\\*>\n");
+        let doc = parse("<https://example.com?find=\\*>\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -2207,7 +2208,7 @@ mod tests {
     // Example 21: backslash escapes not processed in raw HTML
     #[test]
     fn example_21() {
-        let doc = parse("<a href=\"/bar\\/\">\n");
+        let doc = parse("<a href=\"/bar\\/\">\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::HtmlBlock(_) = &doc.children[0] {
             // HTML block containing raw HTML with unprocessed backslash
@@ -2222,7 +2223,7 @@ mod tests {
     // Example 22: backslash escapes in link destination and title
     #[test]
     fn example_22() {
-        let doc = parse("[foo](/bar\\* \"ti\\*tle\")\n");
+        let doc = parse("[foo](/bar\\* \"ti\\*tle\")\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -2236,7 +2237,7 @@ mod tests {
     // Example 23: backslash escapes in ref link destination and title
     #[test]
     fn example_23() {
-        let doc = parse("[foo]\n\n[foo]: /bar\\* \"ti\\*tle\"\n");
+        let doc = parse("[foo]\n\n[foo]: /bar\\* \"ti\\*tle\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![
@@ -2251,7 +2252,7 @@ mod tests {
     // Result: single paragraph with code span + soft break + "aaa"
     #[test]
     fn example_138() {
-        let doc = parse("``` ```\naaa\n");
+        let doc = parse("``` ```\naaa\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert!(p.children.iter().any(|n| matches!(n, InlineNode::CodeSpan(_))));
@@ -2267,7 +2268,7 @@ mod tests {
     // Result: single paragraph with code span + soft break + "foo"
     #[test]
     fn example_145() {
-        let doc = parse("``` aa ```\nfoo\n");
+        let doc = parse("``` aa ```\nfoo\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert!(p.children.iter().any(|n| matches!(n, InlineNode::CodeSpan(_))));
@@ -2279,7 +2280,7 @@ mod tests {
     // Example 187: type 6 HTML block can't interrupt a paragraph
     #[test]
     fn example_187() {
-        let doc = parse("Foo\n<a href=\"bar\">\nbaz\n");
+        let doc = parse("Foo\n<a href=\"bar\">\nbaz\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             let text = get_all_text(&p.children);
@@ -2293,7 +2294,7 @@ mod tests {
     // Example 188: HTML block with blank line separation
     #[test]
     fn example_188() {
-        let doc = parse("<div>\n\n*Emphasized* text.\n\n</div>\n");
+        let doc = parse("<div>\n\n*Emphasized* text.\n\n</div>\n", Spec::CommonMark);
         // Should produce: HTML block, paragraph, HTML block
         assert!(doc.children.len() >= 2);
         assert!(matches!(doc.children[0], BlockNode::HtmlBlock(_)));
@@ -2305,7 +2306,7 @@ mod tests {
     // Example 226: trailing spaces cause hard break
     #[test]
     fn example_226() {
-        let doc = parse("aaa     \nbbb     \n");
+        let doc = parse("aaa     \nbbb     \n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // Should contain: text "aaa", hard break, text "bbb"
@@ -2318,7 +2319,7 @@ mod tests {
     // Example 333: NBSP in code span preserved
     #[test]
     fn example_333() {
-        let doc = parse("`\u{00A0}b\u{00A0}`\n");
+        let doc = parse("`\u{00A0}b\u{00A0}`\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![InlineNode::code_span("\u{00A0}b\u{00A0}")]);
@@ -2331,7 +2332,7 @@ mod tests {
     #[test]
     fn example_334() {
         // `\u{00A0}` → code span with NBSP (not stripped)
-        let doc = parse("`\u{00A0}`\n");
+        let doc = parse("`\u{00A0}`\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             assert_eq!(p.children, vec![InlineNode::code_span("\u{00A0}")]);
@@ -2343,7 +2344,7 @@ mod tests {
     // Example 344: raw HTML takes precedence over code span
     #[test]
     fn example_344() {
-        let doc = parse("<a href=\"`\">`\n");
+        let doc = parse("<a href=\"`\">`\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // Should be: raw HTML <a href="`">, then text `
@@ -2356,7 +2357,7 @@ mod tests {
     // Example 345: code span takes precedence over autolink
     #[test]
     fn example_345() {
-        let doc = parse("`<https://foo.bar.`baz>`\n");
+        let doc = parse("`<https://foo.bar.`baz>`\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // Should have code span containing "<https://foo.bar." then text "baz>"
@@ -2369,7 +2370,7 @@ mod tests {
     // Example 346: autolink takes precedence when backticks don't match
     #[test]
     fn example_346() {
-        let doc = parse("<https://foo.bar.`baz>`\n");
+        let doc = parse("<https://foo.bar.`baz>`\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         if let BlockNode::Paragraph(p) = &doc.children[0] {
             // Should be autolink (backtick is part of URI)
@@ -2382,7 +2383,7 @@ mod tests {
     // Example 642: hard break in HTML attributes (not processed)
     #[test]
     fn example_642() {
-        let doc = parse("<a href=\"hi\">\n");
+        let doc = parse("<a href=\"hi\">\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         // Should not produce a hard break - just raw HTML or HTML block
         if let BlockNode::Paragraph(p) = &doc.children[0] {
@@ -2395,7 +2396,7 @@ mod tests {
     // Example 643: backslash in HTML attributes (not processed as escape)
     #[test]
     fn example_643() {
-        let doc = parse("<a href=\"hi\\\"\n");
+        let doc = parse("<a href=\"hi\\\"\n", Spec::CommonMark);
         assert_eq!(doc.children.len(), 1);
         // Backslash should not be processed as escape in HTML
     }

@@ -2,7 +2,7 @@
 //!
 //! spec.json의 652개 example을 md → parse → render → expected html과 비교
 
-use madang_compiler::{parse, render};
+use madang_compiler::{parse, render, Spec};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -25,7 +25,7 @@ fn commonmark_spec() {
     let mut failures: Vec<(usize, String, String, String)> = Vec::new();
 
     for ex in &examples {
-        let doc = parse(&ex.markdown);
+        let doc = parse(&ex.markdown, Spec::CommonMark);
         let actual = render(&doc);
         if actual != ex.html {
             failures.push((ex.example, ex.section.clone(), ex.html.clone(), actual));

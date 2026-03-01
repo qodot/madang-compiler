@@ -169,6 +169,7 @@ pub fn parse_text(text: &str) -> Option<BlockNode> {
 mod tests {
     use crate::node::{BlockNode, InlineNode};
     use crate::parser::parse;
+    use crate::Spec;
     use rstest::rstest;
 
     #[rstest]
@@ -221,7 +222,7 @@ mod tests {
     // Example 147: 닫는 펜스에 info string은 내용
     #[case("```\n``` aaa\n```", vec![BlockNode::code_block(None, "``` aaa")])]
     fn test_fenced_code_block(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -230,7 +231,7 @@ mod tests {
     #[case("> ```\n> aaa\n\nbbb", vec![BlockNode::blockquote(vec![BlockNode::code_block(None, "aaa")]), BlockNode::paragraph(vec![InlineNode::text("bbb")])])]
     
     fn test_fenced_code_block_pending(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -238,7 +239,7 @@ mod tests {
     // Example 141: setext heading + code block + heading
     #[case("foo\n---\n~~~\nbar\n~~~\n# baz", vec![BlockNode::heading(2, vec![InlineNode::text("foo")]), BlockNode::code_block(None, "bar"), BlockNode::heading(1, vec![InlineNode::text("baz")])])]
     fn test_fenced_code_block_with_setext(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 

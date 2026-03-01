@@ -368,6 +368,7 @@ pub fn can_interrupt_paragraph(block_type: HtmlBlockType) -> bool {
 mod tests {
     use crate::node::{BlockNode, InlineNode};
     use crate::parser::parse;
+    use crate::Spec;
     use rstest::rstest;
 
     // =========================================================================
@@ -424,7 +425,7 @@ mod tests {
         vec![BlockNode::html_block("<script>\nfoo\n</script>1. *bar*")]
     )]
     fn test_html_block_type1(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -467,7 +468,7 @@ mod tests {
         ]
     )]
     fn test_html_block_type2(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -486,7 +487,7 @@ mod tests {
         ]
     )]
     fn test_html_block_type3(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -502,7 +503,7 @@ mod tests {
         vec![BlockNode::html_block("<!DOCTYPE html>")]
     )]
     fn test_html_block_type4(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -521,7 +522,7 @@ mod tests {
         ]
     )]
     fn test_html_block_type5(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -636,7 +637,7 @@ mod tests {
         ]
     )]
     fn test_html_block_type6(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -686,7 +687,7 @@ mod tests {
         vec![BlockNode::paragraph(vec![InlineNode::raw_html("<del>"), InlineNode::emphasis(vec![InlineNode::text("foo")]), InlineNode::raw_html("</del>")])]
     )]
     fn test_html_block_type7(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
@@ -707,7 +708,7 @@ mod tests {
         ]
     )]
     fn test_html_block_example_191(#[case] input: &str, #[case] expected: Vec<BlockNode>) {
-        let doc = parse(input);
+        let doc = parse(input, Spec::CommonMark);
         assert_eq!(doc.children, expected);
     }
 
