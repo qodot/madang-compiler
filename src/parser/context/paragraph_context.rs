@@ -44,10 +44,11 @@ impl ParagraphContext {
         if let BlockStart::SetextHeading(setext) = start {
             let text = self.pending_lines.join("\n");
             let text_trimmed = text.trim_end();
-            let node = crate::node::BlockNode::Heading(HeadingNode::with_raw_text(
+            let node = crate::node::BlockNode::Heading(HeadingNode::setext(
                 setext.level.to_level(),
                 inline::parse_inlines(text_trimmed),
                 &text,
+                line.trim(),
             ));
             return (vec![node], ParsingContext::None(NoneContext));
         }

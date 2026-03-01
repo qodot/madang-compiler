@@ -44,10 +44,18 @@ pub fn parse(line: &str) -> Result<BlockNode, HeadingErr> {
     if rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t') {
         let content = rest.trim();
         let content = strip_closing_hashes(content);
-        Ok(BlockNode::Heading(HeadingNode::new(
-            level as u8,
-            parse_inlines(content),
-        )))
+        if content.is_empty() {
+            Ok(BlockNode::Heading(HeadingNode::new(
+                level as u8,
+                parse_inlines(content),
+            )))
+        } else {
+            Ok(BlockNode::Heading(HeadingNode::with_raw_text(
+                level as u8,
+                parse_inlines(content),
+                content,
+            )))
+        }
     } else {
         Err(HeadingErr::NoSpaceAfterHashes)
     }
