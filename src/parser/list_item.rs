@@ -206,10 +206,11 @@ fn try_bullet_marker(s: &str, indent: usize) -> Option<ListItemStart> {
     let rest = &s[1..];
     if rest.is_empty() {
         // 마커만 있고 끝 → 빈 아이템으로 허용
+        // content_indent = indent + marker_width + 1 (spec Rule 3: blank-start item)
         return Some(ListItemStart {
             marker: ListMarker::Bullet(first_char),
             indent,
-            content_indent: indent + 1,
+            content_indent: indent + 2,
             content: String::new(),
         });
     }
@@ -262,6 +263,7 @@ fn try_ordered_marker(s: &str, indent: usize) -> Option<ListItemStart> {
     let after_delimiter = &rest[1..];
     if after_delimiter.is_empty() {
         // 구분자만 있고 끝 → 빈 아이템
+        // content_indent = indent + marker_len + 1 (spec Rule 3: blank-start item)
         let marker_len = num_str.len() + 1; // 숫자 + 구분자
         return Some(ListItemStart {
             marker: ListMarker::Ordered {
@@ -269,8 +271,8 @@ fn try_ordered_marker(s: &str, indent: usize) -> Option<ListItemStart> {
                 delimiter,
             },
             indent,
-            content_indent: indent + marker_len,
-            content: String::new(), // parse에서 채워짐
+            content_indent: indent + marker_len + 1,
+            content: String::new(),
         });
     }
 
@@ -323,10 +325,10 @@ mod tests {
     #[case("-   item", ListItemStart::bullet('-', 0, 4, "item"))]
     #[case("-    item", ListItemStart::bullet('-', 0, 5, "item"))]
     #[case("-     item", ListItemStart::bullet('-', 0, 2, "    item"))]  // 5+ spaces → N=1, 나머지는 content
-    // Bullet 빈 아이템
-    #[case("-", ListItemStart::bullet('-', 0, 1, ""))]
-    #[case("+", ListItemStart::bullet('+', 0, 1, ""))]
-    #[case("*", ListItemStart::bullet('*', 0, 1, ""))]
+    // Bullet 빈 아이템 (content_indent = indent + 2, spec Rule 3)
+    #[case("-", ListItemStart::bullet('-', 0, 2, ""))]
+    #[case("+", ListItemStart::bullet('+', 0, 2, ""))]
+    #[case("*", ListItemStart::bullet('*', 0, 2, ""))]
     // 기본 Ordered 마커
     #[case("1. item", ListItemStart::ordered(1, '.', 0, 3, "item"))]
     #[case("2. item", ListItemStart::ordered(2, '.', 0, 3, "item"))]
@@ -348,9 +350,9 @@ mod tests {
     #[case("0. ok", ListItemStart::ordered(0, '.', 0, 3, "ok"))]
     // Example 268: 선행 0 허용 (값은 3)
     #[case("003. ok", ListItemStart::ordered(3, '.', 0, 5, "ok"))]
-    // Ordered 빈 아이템
-    #[case("1.", ListItemStart::ordered(1, '.', 0, 2, ""))]
-    #[case("1)", ListItemStart::ordered(1, ')', 0, 2, ""))]
+    // Ordered 빈 아이템 (content_indent = indent + marker_len + 1, spec Rule 3)
+    #[case("1.", ListItemStart::ordered(1, '.', 0, 3, ""))]
+    #[case("1)", ListItemStart::ordered(1, ')', 0, 3, ""))]
     fn test_parse_ok(
         #[case] input: &str,
         #[case] expected: ListItemStart,
@@ -535,12 +537,11 @@ mod tests {
         ])
     ])]
     // Example 278: 빈 줄로 시작하는 아이템
-    // NOTE: 세 번째 아이템 코드 블록은 명세상 "baz"지만 현재 " baz" (향후 개선)
     #[case("-\n  foo\n-\n  ```\n  bar\n  ```\n-\n      baz", vec![
         BlockNode::bullet_list(true, vec![
             ListItemNode::new(vec![BlockNode::paragraph(vec![InlineNode::text("foo")])]),
             ListItemNode::new(vec![BlockNode::code_block(None, "bar")]),
-            ListItemNode::new(vec![BlockNode::code_block(None, " baz")]),
+            ListItemNode::new(vec![BlockNode::code_block(None, "baz")]),
         ])
     ])]
     // Example 281: 중간 빈 아이템 (bullet)

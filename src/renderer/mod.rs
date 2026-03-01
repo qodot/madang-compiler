@@ -44,7 +44,7 @@ fn render_block(block: &BlockNode, out: &mut String) {
             }
             let content = escape_html(&cb.content);
             out.push_str(&content);
-            if !content.is_empty() && !content.ends_with('\n') {
+            if !content.is_empty() {
                 out.push('\n');
             }
             out.push_str("</code></pre>\n");
@@ -101,8 +101,10 @@ fn render_list_item(item: &ListItemNode, tight: bool, out: &mut String) {
             }
         }
     } else {
-        out.push('\n');
-        render_blocks(&item.children, out);
+        if !item.children.is_empty() {
+            out.push('\n');
+            render_blocks(&item.children, out);
+        }
     }
     out.push_str("</li>\n");
 }
