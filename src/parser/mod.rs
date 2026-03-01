@@ -1670,6 +1670,7 @@ mod tests {
         assert!(matches!(&doc.children[0], BlockNode::CodeBlock(_)));
     }
 
+    // Example 290: 2 space indent list item with paragraph, indented code, and block quote
     #[test]
     fn example_290() {
         let doc = parse("  1.  A paragraph\nwith two lines.\n\n          indented code\n\n      > A block quote.\n");
